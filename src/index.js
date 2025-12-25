@@ -39,11 +39,33 @@ function compileRegexOrFallback(pattern, fallback = /nox\s*rp/i) {
   }
 }
 
-function hasManageGuild(member) {
+async function hasBotAccess(message) {
   try {
-    return (
-      member?.permissions?.has?.(PermissionsBitField.Flags.ManageGuild) ?? false
-    );
+    const allowed = Array.isArray(config.allowedRoleIds)
+      ? config.allowedRoleIds
+      : [];
+    if (allowed.length === 0) {
+      // اگر رول تعریف نکردی، برای اینکه قفل نشه، مثل قبل ManageGuild رو قبول کن
+      return (
+        message?.member?.permissions?.has?.(
+          PermissionsBitField.Flags.ManageGuild
+        ) ?? false
+      );
+    }
+
+    // member from message (usually available)
+    let member = message.member;
+
+    // fallback: fetch member if missing
+    if (!member && message.guild && message.author?.id) {
+      member = await message.guild.members
+        .fetch(message.author.id)
+        .catch(() => null);
+    }
+    if (!member) return false;
+
+    // role check
+    return allowed.some((roleId) => member.roles.cache.has(roleId));
   } catch {
     return false;
   }
@@ -714,10 +736,10 @@ async function main() {
     }
 
     if (cmdLower === "tick") {
-      if (!hasManageGuild(message.member)) {
+      if (!(await hasBotAccess(message))) {
         await replySafe(
           message,
-          "❌ | You do not have **Manage Server** permission."
+          "❌ | You don't have permission to use this bot."
         );
         return;
       }
@@ -741,10 +763,10 @@ async function main() {
 
     // Kick commands
     if (cmdLower === "k") {
-      if (!hasManageGuild(message.member)) {
+      if (!(await hasBotAccess(message))) {
         await replySafe(
           message,
-          "❌ | You do not have **Manage Server** permission."
+          "❌ | You don't have permission to use this bot."
         );
         return;
       }
@@ -845,10 +867,10 @@ async function main() {
 
     // Twitch commands
     if (cmdLower === "t") {
-      if (!hasManageGuild(message.member)) {
+      if (!(await hasBotAccess(message))) {
         await replySafe(
           message,
-          "❌ | You do not have **Manage Server** permission."
+          "❌ | You don't have permission to use this bot."
         );
         return;
       }

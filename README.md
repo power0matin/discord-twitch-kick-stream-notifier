@@ -10,9 +10,9 @@ A **Discord bot** that monitors **Twitch** and **Kick** streams and posts **@her
 ✅ Default behavior (ready for GTA RP servers):
 
 - Stream **Game/Category** must be **Grand Theft Auto V**
-- Stream **Title** must match a **keyword/regex** (default: `Nox RP` style pattern)
+- Stream **Title** must match a **keyword/regex** (default: `nox\\s*rp`)
 
-This project is designed to be **global** and **configurable** — you can track any keyword (RP, tournaments, events, etc.), and optionally maintain curated streamer lists for reliable monitoring.
+This project is designed to be **global** and **configurable** — track any keyword (RP, tournaments, events, etc.) with curated streamer lists for reliable monitoring.
 
 ## Table of Contents
 
@@ -24,6 +24,7 @@ This project is designed to be **global** and **configurable** — you can track
 - [Discord Commands](#discord-commands)
 - [Permissions & Intents](#permissions--intents)
 - [Deploy](#deploy)
+- [Data & Storage](#data--storage)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Roadmap](#roadmap)
@@ -35,21 +36,25 @@ This project is designed to be **global** and **configurable** — you can track
 ## Features
 
 - ✅ Monitors **Twitch** + **Kick**
-- ✅ **Keyword/Regex filtering** on stream titles (default regex supports `nox rp` variations)
+- ✅ **Keyword/Regex filtering** on stream titles (`KEYWORD_REGEX`)
 - ✅ **GTA V only** filtering (configurable)
 - ✅ Sends alerts to a specific Discord channel:
   - `@here` (toggleable)
+  - **Streamer Discord mention** (optional, saved when adding streamers)
   - Stream link
-  - Optional mention of the related Discord user (if provided in the list)
 - ✅ Curated streamer lists:
   - Kick list (`.k add/remove/list`)
   - Twitch list (`.t add/remove/list`)
-- ✅ Anti-spam: one alert per stream session (tracks last announced stream IDs)
 - ✅ Persistent storage via `data.json` (auto-created; ignored by git)
+- ✅ **Live message lifecycle**
+  - When streamer goes LIVE → bot posts an alert
+  - While still LIVE → message stays (no spam)
+  - When streamer goes OFFLINE → bot deletes the previous alert message
+- ✅ Resilient tracking: if the alert message was deleted manually, the bot recreates it on the next scan
 
 Optional (advanced):
 
-- 🔎 Discovery mode: scan public listings for matching streams (higher API usage, less reliable on Kick due to listing limits)
+- 🔎 Discovery mode: scan public listings for matching streams (higher API usage; less reliable on Kick due to listing limits)
 
 ## How It Works
 
@@ -59,30 +64,43 @@ This bot uses a **polling loop** (every `CHECK_INTERVAL_SECONDS`) to:
 2. Confirm the stream matches:
    - **Game/Category == GTA V**
    - **Title matches KEYWORD_REGEX**
-3. Post an alert message to your Discord channel and optionally ping `@here`
-
-> Polling is simple, reliable, and works well for communities. If you want event-driven alerts later, see the [Roadmap](#roadmap).
+3. Ensure a single "LIVE" alert message exists:
+   - Create if missing
+   - Keep if still live
+   - Delete when offline
 
 ## Demo
 
 ### Example alert message
 
 ```text
-@here <@DiscordUserId> 🔴 **lionkiiing** is LIVE on **Kick**
-🎮 **Grand Theft Auto V**
-📝 Nox RP | ...
-https://kick.com/lionkiiing
+@here 🟢 **<@DiscordUserId>** is LIVE on **Kick**
+https://kick.com/amirjavankabir
 ```
+
+> 🟢 Kick / 🟣 Twitch
 
 ### Command style example
 
 ```text
-.k add lionkiiing @Lion King
-✅ | Streamer lionkiiing added to Kick list. (ID: 511913973302689802)
+.k add amirjavankabir @AmirJavan
+✅ | Streamer amirjavankabir added to Kick list. (ID: 917523060733644840)
 
-.t add rikoczq @Riko
-✅ | Streamer rikoczq added to Twitch list. (ID: 580077760102531123)
+.t add miinaaw 857045672989818892
+✅ | Streamer miinaaw added to Twitch list. (ID: 857045672989818892)
 ```
+
+### Mention support (important)
+
+When adding a streamer, you can provide the Discord user in **any** of these formats:
+
+- real mention: `@User`
+- raw ID: `123456789012345678`
+- mention markup: `<@123456789012345678>`
+
+The bot saves the Discord user ID and will mention them in every alert.
+
+> Tip: If you typed `@username` but didn’t select the user from the Discord autocomplete, it may not be a real mention. Using the raw ID always works.
 
 > Want screenshots/GIFs here? Add files to `/assets` and update the links below.
 
@@ -172,8 +190,8 @@ All settings are controlled via environment variables.
 
 - Add:
 
-  - `.k add <kickSlug> [@discordUser]`
-  - shortcut: `.k <kickSlug> [@discordUser]`
+  - `.k add <kickSlug> [@discordUser|discordUserId]`
+  - shortcut: `.k <kickSlug> [@discordUser|discordUserId]`
 
 - Remove:
 
@@ -183,12 +201,16 @@ All settings are controlled via environment variables.
 
   - `.k list`
 
+- Status (debug):
+
+  - `.k status <kickSlug>`
+
 ### Twitch list
 
 - Add:
 
-  - `.t add <twitchLogin> [@discordUser]`
-  - shortcut: `.t <twitchLogin> [@discordUser]`
+  - `.t add <twitchLogin> [@discordUser|discordUserId]`
+  - shortcut: `.t <twitchLogin> [@discordUser|discordUserId]`
 
 - Remove:
 
@@ -197,6 +219,10 @@ All settings are controlled via environment variables.
 - List:
 
   - `.t list`
+
+- Status (debug):
+
+  - `.t status <twitchLogin>`
 
 ### Manual check
 
@@ -220,19 +246,16 @@ The bot should have:
 - Send Messages
 - Read Message History
 - **Mention Everyone** _(required if you want `@here` to actually ping)_
+- **Manage Messages** _(required to delete the LIVE alert when the streamer goes offline)_
 
 ## Deploy
 
 ### Option A: VPS with PM2 (recommended)
 
 ```bash
-# install deps
 npm install
-
-# install pm2 globally
 npm i -g pm2
 
-# run
 pm2 start src/index.js --name discord-twitch-kick-stream-notifier
 pm2 save
 pm2 startup
@@ -249,7 +272,7 @@ If you want Docker support, add a `Dockerfile` and `.dockerignore`.
 
   - kick/twitch streamer lists
   - mapping to Discord user IDs
-  - last announced stream IDs (anti-spam)
+  - active live messages (message IDs + session keys)
 
 `data.json` is intentionally in `.gitignore`.
 
@@ -266,11 +289,18 @@ If you want Docker support, add a `Dockerfile` and `.dockerignore`.
 - The bot needs the **Mention Everyone** permission in that channel
 - Or set `MENTION_HERE=false` to disable mentions
 
+### Live message doesn’t delete when streamer goes offline
+
+- The bot needs **Manage Messages** in the notify channel
+- If you changed the notify channel ID, restart the bot
+- If someone manually deleted the alert message, the bot will recreate it next scan
+
 ### Twitch/Kick alerts not working
 
 - Confirm `Client ID/Secret` values in `.env`
 - Increase `CHECK_INTERVAL_SECONDS` (e.g., 120–180) to reduce rate limits
 - Verify the stream is actually in **GTA V** category and the title matches your regex
+- Use `.k status <slug>` or `.t status <login>` to debug matching
 
 ## FAQ
 
@@ -305,6 +335,7 @@ Not yet out-of-the-box. See [Roadmap](#roadmap).
 Contributions are welcome!
 
 1. Fork the repo
+
 2. Create a branch:
 
    ```bash
