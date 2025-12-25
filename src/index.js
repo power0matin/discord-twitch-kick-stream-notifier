@@ -100,12 +100,17 @@ async function sendNotify(client, db, payload) {
   const mentionHere = Boolean(db?.settings?.mentionHere);
   const everyonePing = mentionHere ? "@here " : "";
 
-  const dot = String(payload.platform).toLowerCase() === "twitch" ? "🟣" : "🟢";
+  const platform = String(payload.platform || "").toLowerCase();
+  const dot = platform === "twitch" ? "🟣" : "🟢";
+  const platformName = platform === "twitch" ? "Twitch" : "Kick";
 
   // ✅ show mention instead of username when possible
-  const who = payload.discordId ? `<@${payload.discordId}>` : payload.username;
+  const whoRaw = payload.discordId
+    ? `<@${payload.discordId}>`
+    : payload.username;
+  const who = `**${whoRaw}**`;
 
-  const msg = `${everyonePing}${dot} ${who} — LIVE\n${payload.url}`;
+  const msg = `${everyonePing}${dot} ${who} is LIVE on **${platformName}**\n${payload.url}`;
 
   const allowedMentions = {
     parse: [
@@ -124,7 +129,7 @@ async function sendNotify(client, db, payload) {
       return null;
     });
 
-  return sent?.id ?? null; // ✅ مهم
+  return sent?.id ?? null;
 }
 
 /**
