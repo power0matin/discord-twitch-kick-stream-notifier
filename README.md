@@ -1,12 +1,3 @@
-حتماً — این پایین یک **README کاملاً انگلیسی، کامل و GitHub-native** گذاشتم (badge ها، Table of Contents، Screenshots/GIF placeholder، Quickstart، Deploy، Security، Contributing، FAQ، Roadmap، و …).
-اسم پروژه را هم با توجه به حرف‌هات (SEO + جهانی) گذاشتم:
-
-- **Repo name (recommended):** `discord-twitch-kick-stream-notifier-bot`
-- **Project name:** Discord Twitch/Kick Stream Notifier Bot
-
-> فقط قبل از انتشار، جاهایی که `YOUR_GITHUB_USERNAME` و `YOUR_DISCORD_SERVER` و … هست را با اطلاعات خودت جایگزین کن.
-
-````md
 # Discord Twitch/Kick Stream Notifier Bot
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](#prerequisites)
@@ -82,7 +73,6 @@ This bot uses a **polling loop** (every `CHECK_INTERVAL_SECONDS`) to:
 📝 Nox RP | ...
 https://kick.com/lionkiiing
 ```
-````
 
 ### Command style example
 
