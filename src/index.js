@@ -13,6 +13,7 @@ const { config } = require("./config");
 const { loadDb, saveDb } = require("./storage");
 const { KickClient } = require("./kick");
 const { TwitchClient } = require("./twitch");
+const { handleSetupInteraction } = require("./slash/setup");
 
 /* -------------------------- small utilities -------------------------- */
 
@@ -1306,6 +1307,30 @@ async function main() {
     if (intervalHandle) clearInterval(intervalHandle);
     intervalHandle = setInterval(() => tick().catch(() => null), ms);
   }
+  client.on(Events.InteractionCreate, async (interaction) => {
+    try {
+      const handled = await handleSetupInteraction(interaction);
+      if (!handled) return;
+    } catch (err) {
+      console.error("[Slash] Interaction error:", err?.message ?? err);
+      // Best-effort user feedback
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.followUp({
+            ephemeral: true,
+            content:
+              "❌ An unexpected error occurred while handling this interaction.",
+          });
+        } else {
+          await interaction.reply({
+            ephemeral: true,
+            content:
+              "❌ An unexpected error occurred while handling this interaction.",
+          });
+        }
+      } catch (_) {}
+    }
+  });
 
   client.on("messageCreate", async (message) => {
     if (!message?.guild) return;
