@@ -8,9 +8,17 @@ const DEFAULT_DB = {
     notifyChannelId: null,
     mentionHere: true,
     keywordRegex: "nox\\s*rp",
+    checkIntervalSeconds: 60,
+
+    // Discovery settings (optional)
+    discoveryMode: false,
+    discoveryTwitchPages: 5,
+    discoveryKickLimit: 100,
+
     twitchGta5GameId: "32982",
     kickGtaCategoryName: "Grand Theft Auto V",
     kickGtaCategoryId: null,
+    kickGtaCategoryResolvedAt: 0,
   },
   kick: {
     streamers: [], // { slug, discordId|null }
@@ -27,6 +35,28 @@ const DEFAULT_DB = {
     // key -> streamer, value -> { messageId, sessionKey, createdAt }
     kickActiveMessages: {},
     twitchActiveMessages: {},
+
+    // Health/backoff state (helps avoid rate-limit hammering)
+    kickHealth: {
+      consecutiveFailures: 0,
+      nextAllowedAt: 0,
+      lastError: null,
+      lastErrorAt: 0,
+      lastSuccessAt: 0,
+      lastLoggedAt: 0,
+    },
+    twitchHealth: {
+      consecutiveFailures: 0,
+      nextAllowedAt: 0,
+      lastError: null,
+      lastErrorAt: 0,
+      lastSuccessAt: 0,
+      lastLoggedAt: 0,
+    },
+
+    // Tick metadata
+    lastTickAt: 0,
+    lastTickDurationMs: 0,
   },
 };
 
@@ -52,6 +82,17 @@ async function loadDb() {
     db.state.twitchLastAnnounced ||= {};
     db.state.kickActiveMessages ||= {};
     db.state.twitchActiveMessages ||= {};
+
+    db.state.kickHealth = {
+      ...DEFAULT_DB.state.kickHealth,
+      ...(db.state.kickHealth ?? {}),
+    };
+    db.state.twitchHealth = {
+      ...DEFAULT_DB.state.twitchHealth,
+      ...(db.state.twitchHealth ?? {}),
+    };
+    db.state.lastTickAt ||= 0;
+    db.state.lastTickDurationMs ||= 0;
 
     return db;
   } catch (err) {

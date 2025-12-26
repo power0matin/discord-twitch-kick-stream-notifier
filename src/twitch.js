@@ -1,7 +1,7 @@
-const axios = require('axios');
+const axios = require("axios");
 
-const TWITCH_OAUTH_BASE = 'https://id.twitch.tv';
-const TWITCH_API_BASE = 'https://api.twitch.tv/helix';
+const TWITCH_OAUTH_BASE = "https://id.twitch.tv";
+const TWITCH_API_BASE = "https://api.twitch.tv/helix";
 
 /**
  * Minimal Twitch Helix client (client credentials flow).
@@ -23,7 +23,10 @@ class TwitchClient {
   }
 
   async _getAppToken() {
-    if (!this.enabled) throw new Error('Twitch is not configured (missing clientId/clientSecret).');
+    if (!this.enabled)
+      throw new Error(
+        "Twitch is not configured (missing clientId/clientSecret)."
+      );
 
     const now = Date.now();
     if (this._token && now < this._tokenExpiresAt - 30_000) {
@@ -31,18 +34,18 @@ class TwitchClient {
     }
 
     const body = new URLSearchParams();
-    body.set('client_id', this.clientId);
-    body.set('client_secret', this.clientSecret);
-    body.set('grant_type', 'client_credentials');
+    body.set("client_id", this.clientId);
+    body.set("client_secret", this.clientSecret);
+    body.set("grant_type", "client_credentials");
 
     const resp = await axios.post(`${TWITCH_OAUTH_BASE}/oauth2/token`, body, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      timeout: 15_000
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 15_000,
     });
 
     const token = resp.data?.access_token;
     const expiresIn = Number(resp.data?.expires_in ?? 0);
-    if (!token) throw new Error('Twitch token response missing access_token');
+    if (!token) throw new Error("Twitch token response missing access_token");
 
     this._token = token;
     this._tokenExpiresAt = Date.now() + Math.max(60, expiresIn) * 1000;
@@ -57,8 +60,8 @@ class TwitchClient {
       timeout: 15_000,
       headers: {
         Authorization: `Bearer ${token}`,
-        'Client-Id': this.clientId
-      }
+        "Client-Id": this.clientId,
+      },
     });
 
     return resp.data;
@@ -74,11 +77,11 @@ class TwitchClient {
 
     const chunk = logins.slice(0, 100);
     const params = {
-      user_login: chunk
+      user_login: chunk,
     };
     if (opts.gameId) params.game_id = opts.gameId;
 
-    const data = await this._get('/streams', params);
+    const data = await this._get("/streams", params);
     return data?.data ?? [];
   }
 
@@ -88,10 +91,10 @@ class TwitchClient {
   async getStreamsByGameId(gameId, first = 100, after = undefined) {
     const params = { game_id: gameId, first };
     if (after) params.after = after;
-    const data = await this._get('/streams', params);
+    const data = await this._get("/streams", params);
     return {
       streams: data?.data ?? [],
-      cursor: data?.pagination?.cursor ?? null
+      cursor: data?.pagination?.cursor ?? null,
     };
   }
 }

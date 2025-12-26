@@ -147,7 +147,13 @@ On first run, the bot will create `data.json` and begin monitoring.
 
 ## Configuration
 
-All settings are controlled via environment variables.
+This bot uses a mix of:
+
+- **Environment variables** for secrets and one-time defaults
+- **data.json** (persistent DB) for runtime settings and streamer lists
+
+On first run, env vars are copied into `data.json` as defaults.
+After that, the bot treats `data.json` as the source of truth (so you can change settings via Discord commands) unless you enable legacy overwrite mode.
 
 ### Required
 
@@ -160,7 +166,16 @@ All settings are controlled via environment variables.
 | `KICK_CLIENT_ID`            | Kick app client ID                     |
 | `KICK_CLIENT_SECRET`        | Kick app client secret                 |
 
-### Filtering & behavior
+### Access control
+
+| Variable           | Description                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALLOWED_ROLE_IDS` | Comma-separated Discord role IDs allowed to use admin commands. If empty, the bot falls back to Discord **Manage Server** permission. |
+
+### Filtering & behavior (defaults)
+
+These env vars are treated as **defaults** and are copied into `data.json` on first run.
+After that, you should prefer changing them via Discord commands (see [Discord Commands](#discord-commands)).
 
 | Variable                 |              Default | Description                       |
 | ------------------------ | -------------------: | --------------------------------- |
@@ -182,9 +197,40 @@ All settings are controlled via environment variables.
 | `DISCOVERY_TWITCH_PAGES` |     `5` | Pages scanned on Twitch (each up to 100 results) |
 | `DISCOVERY_KICK_LIMIT`   |   `100` | Kick scan limit                                  |
 
+### Settings precedence (optional)
+
+| Variable           | Default | Description                                                                              |
+| ------------------ | ------: | ---------------------------------------------------------------------------------------- |
+| `ENV_OVERRIDES_DB` | `false` | When `true`, env vars overwrite `data.json` settings on every startup (legacy behavior). |
+
 ## Discord Commands
 
-> Admin requirement: Users must have **Manage Server** permission to run commands (the bot enforces this).
+### Permissions
+
+Administrative commands are restricted to roles listed in `ALLOWED_ROLE_IDS` (comma-separated).
+If `ALLOWED_ROLE_IDS` is empty, the bot falls back to allowing users with **Manage Server**.
+
+`.help` is public.
+
+### General
+
+- `.config` — show current settings
+- `.health` — API/backoff status + last tick info
+- `.export [all|kick|twitch]` — export settings + lists (no secrets)
+- `.tick` — forces an immediate scan
+
+### Settings
+
+- `.set channel <#channel|channelId|this>`
+- `.set mentionhere <on|off>`
+- `.set regex <pattern>`
+- `.set interval <seconds>` (10..3600)
+- `.set discovery <on|off>`
+- `.set discoveryTwitchPages <1..50>`
+- `.set discoveryKickLimit <1..100>`
+- `.set twitchGameId <game_id>`
+- `.set kickCategoryName <name>`
+- `.refresh kickCategory` — force re-resolve Kick category id
 
 ### Kick list
 
@@ -205,6 +251,18 @@ All settings are controlled via environment variables.
 
   - `.k status <kickSlug>`
 
+- Bulk add:
+
+  - `.k addmany <slug1> <slug2> ...`
+
+- Set/clear Discord mention:
+
+  - `.k setmention <kickSlug> <@user|id|none>`
+
+- Clear list:
+
+  - `.k clear --yes`
+
 ### Twitch list
 
 - Add:
@@ -223,6 +281,18 @@ All settings are controlled via environment variables.
 - Status (debug):
 
   - `.t status <twitchLogin>`
+
+- Bulk add:
+
+  - `.t addmany <login1> <login2> ...`
+
+- Set/clear Discord mention:
+
+  - `.t setmention <twitchLogin> <@user|id|none>`
+
+- Clear list:
+
+  - `.t clear --yes`
 
 ### Manual check
 
@@ -256,7 +326,7 @@ The bot should have:
 npm install
 npm i -g pm2
 
-pm2 start src/index.js --name discord-twitch-kick-stream-notifier
+pm2 start index.js --name discord-twitch-kick-stream-notifier
 pm2 save
 pm2 startup
 ```

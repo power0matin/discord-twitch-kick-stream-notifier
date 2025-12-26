@@ -48,6 +48,10 @@ const config = {
   discoveryTwitchPages: int("DISCOVERY_TWITCH_PAGES", 5),
   discoveryKickLimit: int("DISCOVERY_KICK_LIMIT", 100),
 
+  // When true, env settings overwrite DB settings on startup (legacy behavior).
+  // Default: false (DB is the source of truth; env is used as defaults only).
+  envOverridesDb: bool("ENV_OVERRIDES_DB", false),
+
   twitch: {
     clientId: optional("TWITCH_CLIENT_ID"),
     clientSecret: optional("TWITCH_CLIENT_SECRET"),
