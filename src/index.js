@@ -151,6 +151,26 @@ function formatStreamerLine(i, name, discordId) {
 const EMBED_DESC_LIMIT = 4096;
 const EMBED_FIELD_LIMIT = 1024;
 
+// Brand/theme colors (hex)
+const COLORS = {
+  BRAND: 0x5865f2, // Discord blurple-ish
+  INFO: 0x2f3136, // neutral dark
+  SUCCESS: 0x57f287,
+  WARN: 0xfee75c,
+  ERROR: 0xed4245,
+  KICK: 0x2dd4bf, // teal-ish
+  TWITCH: 0x9146ff, // Twitch purple
+};
+
+const ICONS = {
+  INFO: "ℹ️",
+  SUCCESS: "✅",
+  WARN: "⚠️",
+  ERROR: "❌",
+  KICK: "🟢",
+  TWITCH: "🟣",
+};
+
 function safeStr(v) {
   return String(v ?? "").trim();
 }
@@ -161,18 +181,85 @@ function truncate(str, max) {
   return s.slice(0, Math.max(0, max - 1)) + "…";
 }
 
-function makeEmbed({ title, description, fields, footer, author }) {
+function toUnixSeconds(ms) {
+  const n = Number(ms || 0);
+  if (!n) return 0;
+  return Math.floor(n / 1000);
+}
+
+function fmtDiscordTime(ms) {
+  const u = toUnixSeconds(ms);
+  if (!u) return "-";
+  // Full timestamp + relative (nice UI)
+  return `<t:${u}:f> • <t:${u}:R>`;
+}
+
+function embedFooterText(message, extra) {
+  const requestedBy = message?.author?.tag || "unknown";
+  const guildName = message?.guild?.name ? ` • ${message.guild.name}` : "";
+  return `${requestedBy}${guildName}${extra ? ` • ${extra}` : ""}`;
+}
+
+/**
+ * Factory: creates a "pretty" embed with consistent theme.
+ */
+function makeEmbed(
+  message,
+  { tone = "INFO", title, description, fields, url, extraFooter, footerText }
+) {
   const e = new EmbedBuilder();
 
-  if (author?.name) e.setAuthor({ name: author.name });
-  if (title) e.setTitle(truncate(title, 256));
-  if (description) e.setDescription(truncate(description, EMBED_DESC_LIMIT));
+  const t = String(tone || "INFO").toUpperCase();
+  const color =
+    t === "SUCCESS"
+      ? COLORS.SUCCESS
+      : t === "WARN"
+      ? COLORS.WARN
+      : t === "ERROR"
+      ? COLORS.ERROR
+      : t === "KICK"
+      ? COLORS.KICK
+      : t === "TWITCH"
+      ? COLORS.TWITCH
+      : COLORS.BRAND;
+
+  e.setColor(color);
+
+  // Show bot identity on top (cleaner than random titles alone)
+  const botName = message?.client?.user?.username || "Stream Notifier";
+  const botIcon = message?.client?.user?.displayAvatarURL?.() || undefined;
+  e.setAuthor({ name: botName, iconURL: botIcon });
+
+  // Small thumbnail (bot avatar) improves UI a lot
+  if (botIcon) e.setThumbnail(botIcon);
+
+  if (title) {
+    const icon =
+      t === "SUCCESS"
+        ? ICONS.SUCCESS
+        : t === "WARN"
+        ? ICONS.WARN
+        : t === "ERROR"
+        ? ICONS.ERROR
+        : t === "KICK"
+        ? ICONS.KICK
+        : t === "TWITCH"
+        ? ICONS.TWITCH
+        : ICONS.INFO;
+
+    e.setTitle(truncate(`${icon} ${safeStr(title)}`, 256));
+  }
+
+  if (url) e.setURL(String(url));
+
+  if (description)
+    e.setDescription(truncate(String(description), EMBED_DESC_LIMIT));
 
   if (Array.isArray(fields) && fields.length) {
     e.addFields(
       fields
         .filter(Boolean)
-        .slice(0, 25) // embed field max
+        .slice(0, 25)
         .map((f) => ({
           name: truncate(safeStr(f.name), 256) || "\u200b",
           value: truncate(safeStr(f.value), EMBED_FIELD_LIMIT) || "\u200b",
@@ -181,7 +268,12 @@ function makeEmbed({ title, description, fields, footer, author }) {
     );
   }
 
-  if (footer?.text) e.setFooter({ text: truncate(footer.text, 2048) });
+  e.setFooter({
+    text: truncate(
+      footerText ? String(footerText) : embedFooterText(message, extraFooter),
+      2048
+    ),
+  });
   e.setTimestamp(new Date());
 
   return e;
@@ -207,9 +299,6 @@ async function sendEmbed(message, embed, opts = {}) {
     .catch(() => null);
 }
 
-/**
- * Sends multiple embeds (paged). First page is a reply, then sends to channel.
- */
 async function sendEmbedsPaged(message, embeds) {
   if (!Array.isArray(embeds) || embeds.length === 0) return;
   await replyEmbed(message, embeds[0]);
@@ -219,48 +308,103 @@ async function sendEmbedsPaged(message, embeds) {
   }
 }
 
-function buildPagedEmbeds({ title, header, lines, perPage = 15, requestedBy }) {
+/**
+ * Builds paged list embeds with a clean layout.
+ * Uses code block for better alignment and readability.
+ */
+function buildListEmbeds(
+  message,
+  { tone = "INFO", title, headerLines = [], lines, perPage = 15 }
+) {
   const chunks = chunkArray(lines || [], perPage);
   const total = Math.max(1, chunks.length);
 
+  const baseHeader = (headerLines || []).filter(Boolean).join("\n");
   return chunks.map((group, idx) => {
     const pageNo = idx + 1;
-    const desc = [header, "", ...group].filter(Boolean).join("\n");
+    const body = group.map((x) => `• ${safeStr(x)}`).join("\n");
+    const descParts = [];
+    if (baseHeader) descParts.push(baseHeader);
+    if (body) descParts.push(body);
 
-    return makeEmbed({
-      title,
-      description: desc,
-      footer: {
-        text: `Requested by ${requestedBy} • Page ${pageNo}/${total}`,
-      },
+    return makeEmbed(message, {
+      tone,
+      title: `${title} (${group.length}/${lines.length || group.length})`,
+      description: descParts.join("\n\n"),
+      extraFooter: `Page ${pageNo}/${total}`,
     });
   });
 }
 
-function buildCodeEmbeds({ title, lang = "json", text, requestedBy }) {
+/**
+ * Builds paged code embeds (export) with proper slicing.
+ */
+function buildCodeEmbeds(
+  message,
+  { tone = "INFO", title, lang = "json", text }
+) {
   const prefix = `\`\`\`${lang}\n`;
   const suffix = "\n```";
   const budget = Math.max(
-    500,
+    800,
     EMBED_DESC_LIMIT - prefix.length - suffix.length
   );
 
   const parts = [];
-  for (let i = 0; i < text.length; i += budget) {
-    parts.push(text.slice(i, i + budget));
-  }
+  const s = safeStr(text);
+  for (let i = 0; i < s.length; i += budget) parts.push(s.slice(i, i + budget));
 
   const total = Math.max(1, parts.length);
   return parts.map((p, idx) =>
-    makeEmbed({
+    makeEmbed(message, {
+      tone,
       title,
       description: `${prefix}${p}${suffix}`,
-      footer: {
-        text: `Requested by ${requestedBy} • Page ${idx + 1}/${total}`,
-      },
+      extraFooter: `Page ${idx + 1}/${total}`,
     })
   );
 }
+
+/**
+ * Quick response helpers (consistent, pretty)
+ */
+const ui = {
+  info: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "INFO", title, description, fields })
+    ),
+
+  success: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "SUCCESS", title, description, fields })
+    ),
+
+  warn: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "WARN", title, description, fields })
+    ),
+
+  error: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "ERROR", title, description, fields })
+    ),
+
+  kick: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "KICK", title, description, fields })
+    ),
+
+  twitch: (message, title, description, fields) =>
+    replyEmbed(
+      message,
+      makeEmbed(message, { tone: "TWITCH", title, description, fields })
+    ),
+};
 
 /* ----------------------------- notifier ----------------------------- */
 
@@ -1088,38 +1232,26 @@ async function main() {
   /* ----------------------------- commands ----------------------------- */
 
   function replySafe(message, content) {
-    // Backwards compatibility: if you still call replySafe with text,
-    // we wrap it into an embed to improve UI.
-    const requestedBy = message?.author?.tag || "unknown";
-    const e = makeEmbed({
-      title: "Bot Reply",
-      description: safeStr(content),
-      footer: { text: `Requested by ${requestedBy}` },
-    });
-    return replyEmbed(message, e);
+    return ui.info(message, "Reply", safeStr(content));
   }
 
-  async function sendChunked(message, header, lines, maxLen = 1800) {
-    // Ignore maxLen; we now page using embeds.
-    const requestedBy = message?.author?.tag || "unknown";
-    const embeds = buildPagedEmbeds({
+  async function sendChunked(message, header, lines) {
+    const embeds = buildListEmbeds(message, {
+      tone: "INFO",
       title: "List",
-      header: safeStr(header),
+      headerLines: [safeStr(header)],
       lines: (lines || []).map((x) => safeStr(x)),
-      perPage: 15,
-      requestedBy,
+      perPage: 18,
     });
     await sendEmbedsPaged(message, embeds);
   }
 
-  async function sendCodeBlockChunked(message, lang, text, maxLen = 1900) {
-    // Ignore maxLen; we page using embed description limit.
-    const requestedBy = message?.author?.tag || "unknown";
-    const embeds = buildCodeEmbeds({
+  async function sendCodeBlockChunked(message, lang, text) {
+    const embeds = buildCodeEmbeds(message, {
+      tone: "INFO",
       title: "Export",
       lang,
-      text: safeStr(text),
-      requestedBy,
+      text,
     });
     await sendEmbedsPaged(message, embeds);
   }
@@ -1192,7 +1324,8 @@ async function main() {
     if (cmdLower === "help") {
       const requestedBy = message?.author?.tag || "unknown";
 
-      const e = makeEmbed({
+      const e = makeEmbed(message, {
+        tone: "INFO",
         title: "Stream Notifier Bot • Commands",
         description: `Prefix: \`${config.prefix}\`\nUse \`${config.prefix}help\` anytime.`,
         fields: [
@@ -1263,43 +1396,64 @@ async function main() {
         return;
       }
 
-      const notify = db?.settings?.notifyChannelId
-        ? `<#${db.settings.notifyChannelId}> (${db.settings.notifyChannelId})`
+      const notifyCh = db?.settings?.notifyChannelId
+        ? `<#${db.settings.notifyChannelId}>`
         : "(not set)";
 
-      const text = [
-        "**Current Bot Configuration**",
-        `Channel: ${notify}`,
-        `mentionHere: **${Boolean(db.settings.mentionHere) ? "on" : "off"}**`,
-        `keywordRegex: \`${String(db.settings.keywordRegex)}\``,
-        `intervalSeconds: **${getIntervalSeconds()}**`,
-        "",
-        "**Discovery**",
-        `discoveryMode: **${getDiscoveryMode() ? "on" : "off"}**`,
-        `discoveryTwitchPages: **${Number(
-          db.settings.discoveryTwitchPages || 5
-        )}**`,
-        `discoveryKickLimit: **${Number(
-          db.settings.discoveryKickLimit || 100
-        )}**`,
-        "",
-        "**Filters**",
-        `Twitch game_id: **${String(
-          db.settings.twitchGta5GameId ?? "32982"
-        )}**`,
-        `Kick category name: **${
-          String(db.settings.kickGtaCategoryName ?? "") || "-"
-        }**`,
-        `Kick category id: **${
-          db.settings.kickGtaCategoryId ?? "-"
-        }** (resolvedAt: ${formatTs(db.settings.kickGtaCategoryResolvedAt)})`,
-        "",
-        "**Lists**",
-        `Kick streamers: **${db.kick.streamers.length}**`,
-        `Twitch streamers: **${db.twitch.streamers.length}**`,
-      ].join("\n");
+      await ui.info(message, "Configuration", "Current runtime settings", [
+        {
+          name: "Notify Channel",
+          value: `${notifyCh}\n\`${db.settings.notifyChannelId || "-"}\``,
+        },
+        {
+          name: "mentionHere",
+          value: db.settings.mentionHere ? "on" : "off",
+          inline: true,
+        },
+        { name: "interval", value: `${getIntervalSeconds()}s`, inline: true },
+        {
+          name: "keywordRegex",
+          value: `\`${String(db.settings.keywordRegex)}\``,
+        },
 
-      await replySafe(message, text);
+        { name: "\u200b", value: "\u200b" },
+
+        {
+          name: "Discovery",
+          value: [
+            `Mode: **${getDiscoveryMode() ? "on" : "off"}**`,
+            `Twitch pages: **${Number(
+              db.settings.discoveryTwitchPages || 5
+            )}**`,
+            `Kick limit: **${Number(db.settings.discoveryKickLimit || 100)}**`,
+          ].join("\n"),
+          inline: true,
+        },
+        {
+          name: "Filters",
+          value: [
+            `Twitch game_id: **${String(
+              db.settings.twitchGta5GameId ?? "32982"
+            )}**`,
+            `Kick category: **${
+              String(db.settings.kickGtaCategoryName ?? "") || "-"
+            }**`,
+            `Kick category id: **${db.settings.kickGtaCategoryId ?? "-"}**`,
+            `Resolved: ${fmtDiscordTime(
+              db.settings.kickGtaCategoryResolvedAt
+            )}`,
+          ].join("\n"),
+          inline: true,
+        },
+
+        { name: "\u200b", value: "\u200b" },
+
+        {
+          name: "Lists",
+          value: `Kick: **${db.kick.streamers.length}**\nTwitch: **${db.twitch.streamers.length}**`,
+          inline: true,
+        },
+      ]);
       return;
     }
 
@@ -1320,35 +1474,59 @@ async function main() {
         db.state.twitchActiveMessages || {}
       ).length;
 
-      const fmtBackoff = (h) =>
+      const backoffText = (h) =>
         h?.nextAllowedAt && Date.now() < h.nextAllowedAt
-          ? formatTs(h.nextAllowedAt)
+          ? fmtDiscordTime(h.nextAllowedAt)
           : "-";
 
-      const text = [
-        "**Bot Health**",
-        `lastTickAt: **${formatTs(db.state.lastTickAt)}**`,
-        `lastTickDurationMs: **${Number(db.state.lastTickDurationMs || 0)}**`,
-        `activeMessages: Kick **${kickActive}**, Twitch **${twitchActive}**`,
-        "",
-        "**Kick**",
-        `enabled: **${kick.enabled ? "yes" : "no"}**`,
-        `failures: **${Number(kickH.consecutiveFailures || 0)}**`,
-        `backoffUntil: **${fmtBackoff(kickH)}**`,
-        `lastSuccessAt: **${formatTs(kickH.lastSuccessAt)}**`,
-        `lastErrorAt: **${formatTs(kickH.lastErrorAt)}**`,
-        `lastError: ${kickH.lastError ? `\`${kickH.lastError}\`` : "-"}`,
-        "",
-        "**Twitch**",
-        `enabled: **${twitch.enabled ? "yes" : "no"}**`,
-        `failures: **${Number(twitchH.consecutiveFailures || 0)}**`,
-        `backoffUntil: **${fmtBackoff(twitchH)}**`,
-        `lastSuccessAt: **${formatTs(twitchH.lastSuccessAt)}**`,
-        `lastErrorAt: **${formatTs(twitchH.lastErrorAt)}**`,
-        `lastError: ${twitchH.lastError ? `\`${twitchH.lastError}\`` : "-"}`,
-      ].join("\n");
+      await ui.info(message, "Health", "Tick + API/backoff status", [
+        {
+          name: "Last tick",
+          value: fmtDiscordTime(db.state.lastTickAt),
+          inline: true,
+        },
+        {
+          name: "Duration",
+          value: `${Number(db.state.lastTickDurationMs || 0)}ms`,
+          inline: true,
+        },
+        {
+          name: "Active messages",
+          value: `Kick **${kickActive}** • Twitch **${twitchActive}**`,
+          inline: true,
+        },
 
-      await replySafe(message, text);
+        { name: "\u200b", value: "\u200b" },
+
+        {
+          name: "Kick",
+          value: [
+            `Enabled: **${kick.enabled ? "yes" : "no"}**`,
+            `Failures: **${Number(kickH.consecutiveFailures || 0)}**`,
+            `Backoff until: **${backoffText(kickH)}**`,
+            `Last success: **${fmtDiscordTime(kickH.lastSuccessAt)}**`,
+            `Last error: ${
+              kickH.lastError ? `\`${truncate(kickH.lastError, 240)}\`` : "-"
+            }`,
+          ].join("\n"),
+          inline: true,
+        },
+        {
+          name: "Twitch",
+          value: [
+            `Enabled: **${twitch.enabled ? "yes" : "no"}**`,
+            `Failures: **${Number(twitchH.consecutiveFailures || 0)}**`,
+            `Backoff until: **${backoffText(twitchH)}**`,
+            `Last success: **${fmtDiscordTime(twitchH.lastSuccessAt)}**`,
+            `Last error: ${
+              twitchH.lastError
+                ? `\`${truncate(twitchH.lastError, 240)}\``
+                : "-"
+            }`,
+          ].join("\n"),
+          inline: true,
+        },
+      ]);
       return;
     }
 
@@ -1608,19 +1786,38 @@ async function main() {
         return;
       }
 
-      await replySafe(message, "⏳ | Scanning Kick/Twitch ...");
-      const res = await tick();
+      await ui.info(message, "Tick", "Scanning Kick/Twitch…");
+
+      const started = Date.now();
+      await tick();
+      const elapsed = Date.now() - started;
 
       const kickActive = Object.keys(db.state.kickActiveMessages || {}).length;
       const twitchActive = Object.keys(
         db.state.twitchActiveMessages || {}
       ).length;
 
-      await message.channel
-        .send(
-          `✅ | Done. Active messages → Kick: **${kickActive}**, Twitch: **${twitchActive}**`
-        )
-        .catch(() => null);
+      await sendEmbed(
+        message,
+        makeEmbed(message, {
+          tone: "SUCCESS",
+          title: "Tick complete",
+          description: "Scan finished successfully.",
+          fields: [
+            { name: "Elapsed", value: `${elapsed}ms`, inline: true },
+            {
+              name: "Active messages",
+              value: `Kick **${kickActive}** • Twitch **${twitchActive}**`,
+              inline: true,
+            },
+            {
+              name: "Next run",
+              value: `~${getIntervalSeconds()}s`,
+              inline: true,
+            },
+          ],
+        })
+      );
 
       return;
     }
@@ -1639,19 +1836,40 @@ async function main() {
 
       if (sub === "list") {
         if (db.kick.streamers.length === 0) {
-          await replySafe(message, "🎥 | Kick Streamers List: (empty)");
+          await ui.kick(message, "Kick Streamers", "List is empty.");
           return;
         }
+
         const lines = db.kick.streamers.map((s, i) =>
           formatStreamerLine(i + 1, s.slug, s.discordId)
         );
-        await sendChunked(message, "🎥 | Kick Streamers List:", lines);
+
+        const embeds = buildListEmbeds(message, {
+          tone: "KICK",
+          title: "Kick Streamers",
+          headerLines: [
+            `Total: **${db.kick.streamers.length}**`,
+            `Tip: \`${prefix}k addmany <slug1> <slug2> ...\``,
+          ],
+          lines,
+          perPage: 18,
+        });
+
+        await sendEmbedsPaged(message, embeds);
         return;
       }
 
       if (sub === "status") {
         const st = await kickStatus(args[1]);
-        await replySafe(message, st.msg);
+
+        await replyEmbed(
+          message,
+          makeEmbed(message, {
+            tone: "KICK",
+            title: `Kick Status • ${normalizeName(args[1]) || "?"}`,
+            description: st.msg,
+          })
+        );
         return;
       }
 
@@ -1853,19 +2071,40 @@ async function main() {
 
       if (sub === "list") {
         if (db.twitch.streamers.length === 0) {
-          await replySafe(message, "🎥 | Twitch Streamers List: (empty)");
+          await ui.twitch(message, "Twitch Streamers", "List is empty.");
           return;
         }
+
         const lines = db.twitch.streamers.map((s, i) =>
           formatStreamerLine(i + 1, s.login, s.discordId)
         );
-        await sendChunked(message, "🎥 | Twitch Streamers List:", lines);
+
+        const embeds = buildListEmbeds(message, {
+          tone: "TWITCH",
+          title: "Twitch Streamers",
+          headerLines: [
+            `Total: **${db.twitch.streamers.length}**`,
+            `Tip: \`${prefix}t addmany <login1> <login2> ...\``,
+          ],
+          lines,
+          perPage: 18,
+        });
+
+        await sendEmbedsPaged(message, embeds);
         return;
       }
 
       if (sub === "status") {
         const st = await twitchStatus(args[1]);
-        await replySafe(message, st.msg);
+
+        await replyEmbed(
+          message,
+          makeEmbed(message, {
+            tone: "TWITCH",
+            title: `Twitch Status • ${normalizeName(args[1]) || "?"}`,
+            description: st.msg,
+          })
+        );
         return;
       }
 
