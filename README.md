@@ -1,9 +1,16 @@
 # Discord Twitch/Kick Stream Notifier Bot
+<p align="center">
+  <a href="#"><img src="https://badges.strrl.dev/visits/power0matin/discord-twitch-kick-stream-notifier?style=flat&labelColor=333333&logoColor=E7E7E7&label=Visits&logo=github" alt="Visits badge" /></a>
+  <a href="#"><img src="https://img.shields.io/github/stars/power0matin/discord-twitch-kick-stream-notifier?style=flat&labelColor=333333&logoColor=E7E7E7&color=EEAA00&label=Stars&logo=github" alt="Stars badge" /></a>
+  <a href="#"><img src="https://img.shields.io/github/repo-size/power0matin/discord-twitch-kick-stream-notifier?style=flat&labelColor=333333&logoColor=E7E7E7&color=007BFF&label=Repo%20Size&logo=github" alt="Repo size badge" /></a>
+</p>
 
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](#prerequisites)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
-[![Discord](https://img.shields.io/badge/Discord-Bot-5865F2)](#)
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/License-MIT-yellow.svg"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/Discord-Bot-5865F2"/></a>
+</p>
 
 A **Discord bot** that monitors **Twitch** and **Kick** streams and posts **LIVE alerts + stream links** when streams match your filters.
 
