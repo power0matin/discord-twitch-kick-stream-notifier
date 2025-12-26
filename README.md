@@ -262,7 +262,7 @@ These env vars are copied into `data.json` on first run. After that, prefer chan
 | Variable                 |              Default | Description                       |
 | ------------------------ | -------------------: | --------------------------------- |
 | `PREFIX`                 |                  `.` | Command prefix                    |
-| `CHECK_INTERVAL_SECONDS` |                 `60` | Polling interval                  |
+| `CHECK_INTERVAL_SECONDS` |                `300` | Polling interval                  |
 | `MENTION_HERE`           |               `true` | Include `@here` in alerts         |
 | `KEYWORD_REGEX`          |          `nox\\s*rp` | Regex used to match stream titles |
 | `TWITCH_GTA5_GAME_ID`    |              `32982` | Twitch `game_id` for GTA V        |
