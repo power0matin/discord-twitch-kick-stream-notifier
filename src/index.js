@@ -6,7 +6,6 @@ const {
   PermissionsBitField,
   Events,
   ChannelType,
-  EmbedBuilder,
 } = require("discord.js");
 
 const { config } = require("./config");
@@ -16,6 +15,19 @@ const { TwitchClient } = require("./twitch");
 const { handleSetupInteraction } = require("./slash/setup");
 
 const { ensureRoleAdded, ensureRoleRemoved } = require("./streamerRole");
+
+// UI/Embeds
+const {
+  makeEmbed,
+  ui,
+  replyEmbed,
+  sendEmbed,
+  sendEmbedsPaged,
+  buildListEmbeds,
+  buildCodeEmbeds,
+  fmtDiscordTime,
+  truncate,
+} = require("./ui/embeds");
 
 /* -------------------------- small utilities -------------------------- */
 
@@ -139,262 +151,6 @@ async function hasBotAccess(message) {
 function formatStreamerLine(i, name, discordId) {
   return discordId ? `${i}. ${name} <@${discordId}>` : `${i}. ${name}`;
 }
-/* -------------------------- embed utilities -------------------------- */
-
-// Discord embed limits (roughly)
-const EMBED_DESC_LIMIT = 4096;
-const EMBED_FIELD_LIMIT = 1024;
-
-// Brand/theme colors (hex)
-const COLORS = {
-  BRAND: 0x5865f2, // Discord blurple-ish
-  INFO: 0x2f3136, // neutral dark
-  SUCCESS: 0x57f287,
-  WARN: 0xfee75c,
-  ERROR: 0xed4245,
-  KICK: 0x2dd4bf, // teal-ish
-  TWITCH: 0x9146ff, // Twitch purple
-};
-
-const ICONS = {
-  INFO: "ℹ️",
-  SUCCESS: "✅",
-  WARN: "⚠️",
-  ERROR: "❌",
-  KICK: "🟢",
-  TWITCH: "🟣",
-};
-
-function truncate(str, max) {
-  const s = safeStr(str);
-  if (s.length <= max) return s;
-  return s.slice(0, Math.max(0, max - 1)) + "…";
-}
-
-function toUnixSeconds(ms) {
-  const n = Number(ms || 0);
-  if (!n) return 0;
-  return Math.floor(n / 1000);
-}
-
-function fmtDiscordTime(ms) {
-  const u = toUnixSeconds(ms);
-  if (!u) return "-";
-  // Full timestamp + relative (nice UI)
-  return `<t:${u}:f> • <t:${u}:R>`;
-}
-
-function embedFooterText(message, extra) {
-  const requestedBy = message?.author?.tag || "unknown";
-  const guildName = message?.guild?.name ? ` • ${message.guild.name}` : "";
-  return `${requestedBy}${guildName}${extra ? ` • ${extra}` : ""}`;
-}
-
-/**
- * Factory: creates a "pretty" embed with consistent theme.
- */
-function makeEmbed(
-  message,
-  { tone = "INFO", title, description, fields, url, extraFooter, footerText }
-) {
-  const e = new EmbedBuilder();
-
-  const t = String(tone || "INFO").toUpperCase();
-  const color =
-    t === "SUCCESS"
-      ? COLORS.SUCCESS
-      : t === "WARN"
-      ? COLORS.WARN
-      : t === "ERROR"
-      ? COLORS.ERROR
-      : t === "KICK"
-      ? COLORS.KICK
-      : t === "TWITCH"
-      ? COLORS.TWITCH
-      : COLORS.BRAND;
-
-  e.setColor(color);
-
-  // Show bot identity on top (cleaner than random titles alone)
-  const botName = message?.client?.user?.username || "Stream Notifier";
-  const botIcon = message?.client?.user?.displayAvatarURL?.() || undefined;
-  e.setAuthor({ name: botName, iconURL: botIcon });
-
-  // Small thumbnail (bot avatar) improves UI a lot
-  if (botIcon) e.setThumbnail(botIcon);
-
-  if (title) {
-    const icon =
-      t === "SUCCESS"
-        ? ICONS.SUCCESS
-        : t === "WARN"
-        ? ICONS.WARN
-        : t === "ERROR"
-        ? ICONS.ERROR
-        : t === "KICK"
-        ? ICONS.KICK
-        : t === "TWITCH"
-        ? ICONS.TWITCH
-        : ICONS.INFO;
-
-    e.setTitle(truncate(`${icon} ${safeStr(title)}`, 256));
-  }
-
-  if (url) e.setURL(String(url));
-
-  if (description)
-    e.setDescription(truncate(String(description), EMBED_DESC_LIMIT));
-
-  if (Array.isArray(fields) && fields.length) {
-    e.addFields(
-      fields
-        .filter(Boolean)
-        .slice(0, 25)
-        .map((f) => ({
-          name: truncate(safeStr(f.name), 256) || "\u200b",
-          value: truncate(safeStr(f.value), EMBED_FIELD_LIMIT) || "\u200b",
-          inline: Boolean(f.inline),
-        }))
-    );
-  }
-
-  e.setFooter({
-    text: truncate(
-      footerText ? String(footerText) : embedFooterText(message, extraFooter),
-      2048
-    ),
-  });
-  e.setTimestamp(new Date());
-
-  return e;
-}
-
-async function replyEmbed(message, embed, opts = {}) {
-  return message
-    .reply({
-      embeds: [embed],
-      allowedMentions: { parse: [] },
-      ...opts,
-    })
-    .catch(() => null);
-}
-
-async function sendEmbed(message, embed, opts = {}) {
-  return message.channel
-    .send({
-      embeds: [embed],
-      allowedMentions: { parse: [] },
-      ...opts,
-    })
-    .catch(() => null);
-}
-
-async function sendEmbedsPaged(message, embeds) {
-  if (!Array.isArray(embeds) || embeds.length === 0) return;
-  await replyEmbed(message, embeds[0]);
-  for (let i = 1; i < embeds.length; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    await sendEmbed(message, embeds[i]);
-  }
-}
-
-/**
- * Builds paged list embeds with a clean layout.
- * Uses code block for better alignment and readability.
- */
-function buildListEmbeds(
-  message,
-  { tone = "INFO", title, headerLines = [], lines, perPage = 15 }
-) {
-  const chunks = chunkArray(lines || [], perPage);
-  const total = Math.max(1, chunks.length);
-
-  const baseHeader = (headerLines || []).filter(Boolean).join("\n");
-  return chunks.map((group, idx) => {
-    const pageNo = idx + 1;
-    const body = group.map((x) => `• ${safeStr(x)}`).join("\n");
-    const descParts = [];
-    if (baseHeader) descParts.push(baseHeader);
-    if (body) descParts.push(body);
-
-    return makeEmbed(message, {
-      tone,
-      title: `${title} (${group.length}/${lines.length || group.length})`,
-      description: descParts.join("\n\n"),
-      extraFooter: `Page ${pageNo}/${total}`,
-    });
-  });
-}
-
-/**
- * Builds paged code embeds (export) with proper slicing.
- */
-function buildCodeEmbeds(
-  message,
-  { tone = "INFO", title, lang = "json", text }
-) {
-  const prefix = `\`\`\`${lang}\n`;
-  const suffix = "\n```";
-  const budget = Math.max(
-    800,
-    EMBED_DESC_LIMIT - prefix.length - suffix.length
-  );
-
-  const parts = [];
-  const s = safeStr(text);
-  for (let i = 0; i < s.length; i += budget) parts.push(s.slice(i, i + budget));
-
-  const total = Math.max(1, parts.length);
-  return parts.map((p, idx) =>
-    makeEmbed(message, {
-      tone,
-      title,
-      description: `${prefix}${p}${suffix}`,
-      extraFooter: `Page ${idx + 1}/${total}`,
-    })
-  );
-}
-
-/**
- * Quick response helpers (consistent, pretty)
- */
-const ui = {
-  info: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "INFO", title, description, fields })
-    ),
-
-  success: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "SUCCESS", title, description, fields })
-    ),
-
-  warn: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "WARN", title, description, fields })
-    ),
-
-  error: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "ERROR", title, description, fields })
-    ),
-
-  kick: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "KICK", title, description, fields })
-    ),
-
-  twitch: (message, title, description, fields) =>
-    replyEmbed(
-      message,
-      makeEmbed(message, { tone: "TWITCH", title, description, fields })
-    ),
-};
 
 /* ----------------------------- notifier ----------------------------- */
 
@@ -1436,7 +1192,11 @@ async function main() {
       const e = makeEmbed(message, {
         tone: "INFO",
         title: "Stream Notifier Bot • Commands",
-        description: `Prefix: \`${config.prefix}\`\nUse \`${config.prefix}help\` anytime.`,
+        description: [
+          `**Prefix:** \`${config.prefix}\``,
+          `Use \`${config.prefix}help\` anytime.`,
+          `Tip: You can also use **/setup** for guided configuration.`,
+        ].join("\n"),
         fields: [
           {
             name: "General",
@@ -1489,7 +1249,7 @@ async function main() {
             inline: true,
           },
         ],
-        footer: { text: `Requested by ${requestedBy}` },
+        extraFooter: "Help",
       });
 
       await replyEmbed(message, e);
