@@ -6,6 +6,7 @@ const {
   PermissionsBitField,
   Events,
   ChannelType,
+  EmbedBuilder,
 } = require("discord.js");
 
 const { config } = require("./config");
@@ -143,6 +144,122 @@ async function hasBotAccess(message) {
 
 function formatStreamerLine(i, name, discordId) {
   return discordId ? `${i}. ${name} <@${discordId}>` : `${i}. ${name}`;
+}
+/* -------------------------- embed utilities -------------------------- */
+
+// Discord embed limits (roughly)
+const EMBED_DESC_LIMIT = 4096;
+const EMBED_FIELD_LIMIT = 1024;
+
+function safeStr(v) {
+  return String(v ?? "").trim();
+}
+
+function truncate(str, max) {
+  const s = safeStr(str);
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+function makeEmbed({ title, description, fields, footer, author }) {
+  const e = new EmbedBuilder();
+
+  if (author?.name) e.setAuthor({ name: author.name });
+  if (title) e.setTitle(truncate(title, 256));
+  if (description) e.setDescription(truncate(description, EMBED_DESC_LIMIT));
+
+  if (Array.isArray(fields) && fields.length) {
+    e.addFields(
+      fields
+        .filter(Boolean)
+        .slice(0, 25) // embed field max
+        .map((f) => ({
+          name: truncate(safeStr(f.name), 256) || "\u200b",
+          value: truncate(safeStr(f.value), EMBED_FIELD_LIMIT) || "\u200b",
+          inline: Boolean(f.inline),
+        }))
+    );
+  }
+
+  if (footer?.text) e.setFooter({ text: truncate(footer.text, 2048) });
+  e.setTimestamp(new Date());
+
+  return e;
+}
+
+async function replyEmbed(message, embed, opts = {}) {
+  return message
+    .reply({
+      embeds: [embed],
+      allowedMentions: { parse: [] },
+      ...opts,
+    })
+    .catch(() => null);
+}
+
+async function sendEmbed(message, embed, opts = {}) {
+  return message.channel
+    .send({
+      embeds: [embed],
+      allowedMentions: { parse: [] },
+      ...opts,
+    })
+    .catch(() => null);
+}
+
+/**
+ * Sends multiple embeds (paged). First page is a reply, then sends to channel.
+ */
+async function sendEmbedsPaged(message, embeds) {
+  if (!Array.isArray(embeds) || embeds.length === 0) return;
+  await replyEmbed(message, embeds[0]);
+  for (let i = 1; i < embeds.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    await sendEmbed(message, embeds[i]);
+  }
+}
+
+function buildPagedEmbeds({ title, header, lines, perPage = 15, requestedBy }) {
+  const chunks = chunkArray(lines || [], perPage);
+  const total = Math.max(1, chunks.length);
+
+  return chunks.map((group, idx) => {
+    const pageNo = idx + 1;
+    const desc = [header, "", ...group].filter(Boolean).join("\n");
+
+    return makeEmbed({
+      title,
+      description: desc,
+      footer: {
+        text: `Requested by ${requestedBy} • Page ${pageNo}/${total}`,
+      },
+    });
+  });
+}
+
+function buildCodeEmbeds({ title, lang = "json", text, requestedBy }) {
+  const prefix = `\`\`\`${lang}\n`;
+  const suffix = "\n```";
+  const budget = Math.max(
+    500,
+    EMBED_DESC_LIMIT - prefix.length - suffix.length
+  );
+
+  const parts = [];
+  for (let i = 0; i < text.length; i += budget) {
+    parts.push(text.slice(i, i + budget));
+  }
+
+  const total = Math.max(1, parts.length);
+  return parts.map((p, idx) =>
+    makeEmbed({
+      title,
+      description: `${prefix}${p}${suffix}`,
+      footer: {
+        text: `Requested by ${requestedBy} • Page ${idx + 1}/${total}`,
+      },
+    })
+  );
 }
 
 /* ----------------------------- notifier ----------------------------- */
@@ -971,46 +1088,40 @@ async function main() {
   /* ----------------------------- commands ----------------------------- */
 
   function replySafe(message, content) {
-    return message.reply(content).catch(() => null);
+    // Backwards compatibility: if you still call replySafe with text,
+    // we wrap it into an embed to improve UI.
+    const requestedBy = message?.author?.tag || "unknown";
+    const e = makeEmbed({
+      title: "Bot Reply",
+      description: safeStr(content),
+      footer: { text: `Requested by ${requestedBy}` },
+    });
+    return replyEmbed(message, e);
   }
 
   async function sendChunked(message, header, lines, maxLen = 1800) {
-    const parts = [];
-    let cur = header ? String(header) : "";
-
-    for (const ln of lines) {
-      const add = (cur ? "\n" : "") + ln;
-      if ((cur + add).length > maxLen) {
-        parts.push(cur);
-        cur = ln;
-      } else {
-        cur += add;
-      }
-    }
-    if (cur) parts.push(cur);
-
-    for (const p of parts) {
-      // Use reply for the first chunk, then send
-      if (p === parts[0]) await replySafe(message, p);
-      else await message.channel.send(p).catch(() => null);
-    }
+    // Ignore maxLen; we now page using embeds.
+    const requestedBy = message?.author?.tag || "unknown";
+    const embeds = buildPagedEmbeds({
+      title: "List",
+      header: safeStr(header),
+      lines: (lines || []).map((x) => safeStr(x)),
+      perPage: 15,
+      requestedBy,
+    });
+    await sendEmbedsPaged(message, embeds);
   }
 
   async function sendCodeBlockChunked(message, lang, text, maxLen = 1900) {
-    const prefix = `\`\`\`${lang}\n`;
-    const suffix = "\n```";
-
-    const budget = Math.max(200, maxLen - prefix.length - suffix.length);
-    const parts = [];
-    for (let i = 0; i < text.length; i += budget) {
-      parts.push(text.slice(i, i + budget));
-    }
-
-    for (let i = 0; i < parts.length; i++) {
-      const chunk = `${prefix}${parts[i]}${suffix}`;
-      if (i === 0) await replySafe(message, chunk);
-      else await message.channel.send(chunk).catch(() => null);
-    }
+    // Ignore maxLen; we page using embed description limit.
+    const requestedBy = message?.author?.tag || "unknown";
+    const embeds = buildCodeEmbeds({
+      title: "Export",
+      lang,
+      text: safeStr(text),
+      requestedBy,
+    });
+    await sendEmbedsPaged(message, embeds);
   }
 
   function parseOnOff(value) {
@@ -1079,44 +1190,67 @@ async function main() {
     const cmdLower = normalizeName(cmd);
 
     if (cmdLower === "help") {
-      const helpText = [
-        "**Stream Notifier Bot Commands**",
-        "",
-        "**General**",
-        `\`${prefix}config\`  (show current settings)`,
-        `\`${prefix}health\`  (tick + API/backoff status)`,
-        `\`${prefix}export [all|kick|twitch]\`  (no secrets)`,
-        `\`${prefix}tick\`  (manual scan)`,
-        "",
-        "**Settings (admin)**",
-        `\`${prefix}set channel <#channel|channelId|this>\``,
-        `\`${prefix}set mentionhere <on|off>\``,
-        `\`${prefix}set regex <pattern>\``,
-        `\`${prefix}set interval <seconds>\`  (10..3600)`,
-        `\`${prefix}set discovery <on|off>\``,
-        `\`${prefix}set discoveryTwitchPages <1..50>\``,
-        `\`${prefix}set discoveryKickLimit <1..100>\``,
-        `\`${prefix}set twitchGameId <game_id>\``,
-        `\`${prefix}set kickCategoryName <name>\``,
-        `\`${prefix}refresh kickCategory\``,
-        `\`${prefix}k list\``,
-        `\`${prefix}k add <kickSlug> [@discordUser]\` (or: \`${prefix}k <kickSlug> [@user]\`)`,
-        `\`${prefix}k addmany <slug1> <slug2> ...\``,
-        `\`${prefix}k setmention <kickSlug> <@user|id|none>\``,
-        `\`${prefix}k remove <kickSlug>\``,
-        `\`${prefix}k clear --yes\``,
-        `\`${prefix}k status <kickSlug>\`  (debug)`,
-        "",
-        `\`${prefix}t list\``,
-        `\`${prefix}t add <twitchLogin> [@discordUser]\` (or: \`${prefix}t <twitchLogin> [@user]\`)`,
-        `\`${prefix}t addmany <login1> <login2> ...\``,
-        `\`${prefix}t setmention <twitchLogin> <@user|id|none>\``,
-        `\`${prefix}t remove <twitchLogin>\``,
-        `\`${prefix}t clear --yes\``,
-        `\`${prefix}t status <twitchLogin>\`  (debug)`,
-      ].join("\n");
+      const requestedBy = message?.author?.tag || "unknown";
 
-      await replySafe(message, helpText);
+      const e = makeEmbed({
+        title: "Stream Notifier Bot • Commands",
+        description: `Prefix: \`${config.prefix}\`\nUse \`${config.prefix}help\` anytime.`,
+        fields: [
+          {
+            name: "General",
+            value: [
+              `\`${prefix}config\`  (show current settings)`,
+              `\`${prefix}health\`  (tick + API/backoff status)`,
+              `\`${prefix}export [all|kick|twitch]\`  (no secrets)`,
+              `\`${prefix}tick\`  (manual scan)`,
+            ].join("\n"),
+          },
+          {
+            name: "Settings (admin)",
+            value: [
+              `\`${prefix}set channel <#channel|channelId|this>\``,
+              `\`${prefix}set mentionhere <on|off>\``,
+              `\`${prefix}set regex <pattern>\``,
+              `\`${prefix}set interval <seconds>\`  (10..3600)`,
+              `\`${prefix}set discovery <on|off>\``,
+              `\`${prefix}set discoveryTwitchPages <1..50>\``,
+              `\`${prefix}set discoveryKickLimit <1..100>\``,
+              `\`${prefix}set twitchGameId <game_id>\``,
+              `\`${prefix}set kickCategoryName <name>\``,
+              `\`${prefix}refresh kickCategory\``,
+            ].join("\n"),
+          },
+          {
+            name: "Kick",
+            value: [
+              `\`${prefix}k list\``,
+              `\`${prefix}k add <kickSlug> [@discordUser]\``,
+              `\`${prefix}k addmany <slug1> <slug2> ...\``,
+              `\`${prefix}k setmention <kickSlug> <@user|id|none>\``,
+              `\`${prefix}k remove <kickSlug>\``,
+              `\`${prefix}k clear --yes\``,
+              `\`${prefix}k status <kickSlug>\``,
+            ].join("\n"),
+            inline: true,
+          },
+          {
+            name: "Twitch",
+            value: [
+              `\`${prefix}t list\``,
+              `\`${prefix}t add <twitchLogin> [@discordUser]\``,
+              `\`${prefix}t addmany <login1> <login2> ...\``,
+              `\`${prefix}t setmention <twitchLogin> <@user|id|none>\``,
+              `\`${prefix}t remove <twitchLogin>\``,
+              `\`${prefix}t clear --yes\``,
+              `\`${prefix}t status <twitchLogin>\``,
+            ].join("\n"),
+            inline: true,
+          },
+        ],
+        footer: { text: `Requested by ${requestedBy}` },
+      });
+
+      await replyEmbed(message, e);
       return;
     }
 
