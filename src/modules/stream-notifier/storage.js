@@ -74,9 +74,9 @@ const DEFAULT_DB = {
       messageTemplate: "Welcome {mention} to **{server}**!",
 
       // NEW: embed-specific templates (no mention inside embed)
-      embedTitle: "Welcome to the NOX Community!",
+      embedTitle: "NOX Community",
       embedDescriptionTemplate:
-        "Welcome to the NOX Community! We are glad to have you.",
+        "Welcome to the NOX Community! We are glad to have you./n",
 
       // NEW: link buttons under embed
       buttons: {

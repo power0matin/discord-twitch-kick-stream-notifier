@@ -49,27 +49,6 @@ function hasBotAccess(interaction, config) {
   }
 }
 
-function withEphemeralFlags(payload) {
-  if (!payload || typeof payload !== "object") return payload;
-
-  // If caller already uses flags, do not override.
-  if (payload.flags != null) {
-    // ensure deprecated key is not passed
-    if ("ephemeral" in payload) {
-      const { ephemeral: _e, ...rest } = payload;
-      return rest;
-    }
-    return payload;
-  }
-
-  if (payload.ephemeral === true) {
-    const { ephemeral: _e, ...rest } = payload;
-    return { ...rest, flags: EPHEMERAL_FLAG };
-  }
-
-  return payload;
-}
-
 async function safeReply(interaction, payload) {
   // First try: flags-based (newer API style)
   const primary = toFlagsPayload(payload);
@@ -123,9 +102,9 @@ function stripMentions(text) {
     .replaceAll(/<@&(\d+)>/g, "@role")
     .replaceAll(/<#(\d+)>/g, "#channel")
     .replaceAll(/@everyone/g, "everyone")
-    .replaceAll(/@here/g, "here");
+    .replaceAll(/@here/g, "here")
+    .trim();
 }
-
 
 function buildWelcomeEmbed(ctx, member) {
   const db = ctx.getDb();
@@ -133,26 +112,44 @@ function buildWelcomeEmbed(ctx, member) {
 
   const title = String(s.embedTitle || "Welcome!").slice(0, 256);
 
-  // Important: no mention inside embed. We also sanitize mentions defensively.
+  // No mention inside embed. We sanitize mentions defensively.
   const rawDesc = applyTemplate(
     s.embedDescriptionTemplate ||
-      "Welcome to **{server}**! We are glad to have you.",
+      "Welcome to **{server}**!\nWe are glad to have you.",
     member
   );
-  const description = stripMentions(rawDesc).slice(0, 4000);
+
+  // Make description cleaner: trim + ensure line breaks render well.
+  const description = stripMentions(rawDesc)
+    .replaceAll("\\n", "\n")
+    .slice(0, 4000);
 
   const avatarUrl =
     member.user?.displayAvatarURL?.({ size: 256, extension: "png" }) ||
+    member.user?.displayAvatarURL?.({ size: 256 }) ||
     member.user?.avatarURL?.({ size: 256 }) ||
     null;
 
-  // Using your existing embed system (ctx.makeEmbed)
+  // Important:
+  // - use thumbnailUrl (your embed system expects thumbnailUrl, not thumbnail:{url})
+  // - chrome:"minimal" removes the author line ("Stream Notifier") for cleaner UX
   const embed = ctx.makeEmbed(null, {
-    tone: "INFO",
+    tone: "SUCCESS",
+    chrome: "minimal",
+    footerMode: "none",
     title,
     description,
-    // Thumbnail on the right (like your screenshot)
-    thumbnail: avatarUrl ? { url: avatarUrl } : undefined,
+    thumbnailUrl: avatarUrl || undefined,
+
+    // Remove ✅ next to title for Welcome
+    titleIcon: false,
+
+    // 1) shows "Today at ..." next to footer text even in minimal chrome
+    timestamp: "always",
+
+    // 2) optional color override (accepts "#RRGGBB", "RRGGBB", "0xRRGGBB", or number)
+    color: s.embedColor,
+
     footer: { text: `${member.guild?.name || "Server"} • Welcome` },
   });
 
@@ -224,7 +221,10 @@ async function sendWelcome(ctx, member, opts = {}) {
       return null;
     });
 
-    if (channel && "send" in channel) {
+    if (
+      channel &&
+      (channel.isTextBased?.() || typeof channel.send === "function")
+    ) {
       const embed = buildWelcomeEmbed(ctx, member);
       const row = buildWelcomeButtonsRow(ctx);
 
@@ -235,6 +235,16 @@ async function sendWelcome(ctx, member, opts = {}) {
         content: mentionLine,
         embeds: [embed],
         components: row ? [row] : [],
+
+        // Security/UX hardening:
+        // - allow ping ONLY for the joining member
+        // - block roles/everyone by default
+        allowedMentions: {
+          parse: [],
+          users: [member.id],
+          roles: [],
+          repliedUser: false,
+        },
       };
 
       await channel.send(payload).catch((e) => {
@@ -273,6 +283,12 @@ async function handleInteraction(interaction, ctx) {
   }
 
   const db = ctx.getDb();
+
+  // Backward-compatible init (prevents crashes on older data.json)
+  db.welcome ||= {};
+  db.welcome.settings ||= {};
+  db.welcome.settings.buttons ||= {};
+
   const s = db.welcome.settings;
   const sub = interaction.options.getSubcommand();
 
@@ -337,6 +353,48 @@ async function handleInteraction(interaction, ctx) {
     await safeReply(interaction, {
       ephemeral: true,
       content: "✅ Welcome buttons updated.",
+    });
+    return true;
+  }
+
+  if (sub === "set-color") {
+    const clear = interaction.options.getBoolean("clear", false) || false;
+    const color = interaction.options.getString("color", false);
+
+    if (clear) {
+      s.embedColor = null;
+      await ctx.persistDb().catch(() => null);
+      await safeReply(interaction, {
+        ephemeral: true,
+        content: "✅ Welcome embed color cleared (theme default).",
+      });
+      return true;
+    }
+
+    if (!color) {
+      await safeReply(interaction, {
+        ephemeral: true,
+        content: "❌ Provide a color like #57F287 or set clear=true.",
+      });
+      return true;
+    }
+
+    const raw = String(color).trim();
+    const cleaned = raw.replace(/^#/g, "").replace(/^0x/i, "").trim();
+
+    if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) {
+      await safeReply(interaction, {
+        ephemeral: true,
+        content: "❌ Invalid color. Use #RRGGBB (example: #57F287).",
+      });
+      return true;
+    }
+
+    s.embedColor = `#${cleaned.toUpperCase()}`;
+    await ctx.persistDb().catch(() => null);
+    await safeReply(interaction, {
+      ephemeral: true,
+      content: `✅ Welcome embed color set to \`${s.embedColor}\`.`,
     });
     return true;
   }
@@ -425,8 +483,18 @@ async function handleInteraction(interaction, ctx) {
   }
 
   if (sub === "show") {
+    const b = s.buttons || {};
+    const btn1 = b.button1Url
+      ? `[${b.button1Label || "Button 1"}](${b.button1Url})`
+      : "_Not set_";
+    const btn2 = b.button2Url
+      ? `[${b.button2Label || "Button 2"}](${b.button2Url})`
+      : "_Not set_";
+
     const embed = ctx.makeEmbed(null, {
       tone: "INFO",
+      chrome: "minimal",
+      footerMode: "none",
       title: "Welcome • Settings",
       fields: [
         { name: "Enabled", value: String(Boolean(s.enabled)), inline: true },
@@ -442,17 +510,37 @@ async function handleInteraction(interaction, ctx) {
           inline: false,
         },
         {
-          name: "Template",
-          value: `\`${String(s.messageTemplate || "").slice(0, 200)}\``,
+          name: "Embed Title",
+          value: s.embedTitle
+            ? `\`${String(s.embedTitle).slice(0, 200)}\``
+            : "_Not set_",
+          inline: false,
+        },
+        {
+          name: "Embed Color",
+          value: s.embedColor
+            ? `\`${String(s.embedColor)}\``
+            : "_Default (theme)_",
+          inline: true,
+        },
+        {
+          name: "Embed Message",
+          value: s.embedDescriptionTemplate
+            ? `\`${String(s.embedDescriptionTemplate).slice(0, 200)}\``
+            : "_Not set_",
+          inline: false,
+        },
+        {
+          name: "Buttons",
+          value: `1) ${btn1}\n2) ${btn2}`,
           inline: false,
         },
       ],
     });
+
     await safeReply(interaction, { ephemeral: true, embeds: [embed] });
     return true;
   }
-
-  return true;
 }
 
 function register(ctx) {

@@ -107,6 +107,28 @@ function toneToColor(tone) {
   return COLORS.BRAND;
 }
 
+function parseColor(input) {
+  if (input == null) return null;
+
+  if (typeof input === "number" && Number.isFinite(input)) {
+    const n = Math.floor(input);
+    if (n < 0 || n > 0xffffff) return null;
+    return n;
+  }
+
+  const s = String(input).trim();
+  if (!s) return null;
+
+  // Accept: "#RRGGBB", "RRGGBB", "0xRRGGBB"
+  const cleaned = s.replace(/^#/g, "").replace(/^0x/i, "").trim();
+
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return null;
+
+  const n = Number.parseInt(cleaned, 16);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 function toneToIcon(tone) {
   const t = String(tone || "INFO").toUpperCase();
   return ICONS[t] || ICONS.INFO;
@@ -289,6 +311,15 @@ function makeEmbed(
     fields,
     url,
 
+    // NEW: explicit color override (hex string or number)
+    color,
+
+    // NEW: control title icon behavior
+    // - true (default): prefix icon based on tone
+    // - false: no icon
+    // - string: custom icon (e.g., "🎉")
+    titleIcon = true,
+
     extraFooter,
     footerText,
     footer, // { text }
@@ -299,13 +330,20 @@ function makeEmbed(
 
     density = "normal",
     chrome = "standard",
+
+    // timestamp:
+    // - true  => keep legacy behavior (only when chrome !== minimal)
+    // - false => no timestamp
+    // - "always" => force timestamp even in chrome:"minimal" (needed for Welcome footer time)
     timestamp = true,
   } = {}
 ) {
   const meta = resolveContextMeta(ctx);
 
   const e = new EmbedBuilder();
-  e.setColor(toneToColor(tone));
+
+  const colorOverride = parseColor(color);
+  e.setColor(colorOverride != null ? colorOverride : toneToColor(tone));
 
   const useChrome = String(chrome || "standard").toLowerCase() !== "minimal";
 
@@ -318,8 +356,16 @@ function makeEmbed(
   if (imageUrl) e.setImage(String(imageUrl));
 
   if (title) {
-    const icon = toneToIcon(tone);
-    e.setTitle(truncate(`${icon} ${safeStr(title)}`, LIMITS.TITLE));
+    let prefix = "";
+
+    if (typeof titleIcon === "string" && titleIcon.trim()) {
+      prefix = `${titleIcon.trim()} `;
+    } else if (titleIcon !== false) {
+      // default behavior (backward compatible)
+      prefix = `${toneToIcon(tone)} `;
+    }
+
+    e.setTitle(truncate(`${prefix}${safeStr(title)}`, LIMITS.TITLE));
   }
 
   if (url) e.setURL(String(url));
@@ -348,7 +394,11 @@ function makeEmbed(
     });
   }
 
-  if (useChrome && timestamp) e.setTimestamp(new Date());
+  const tsMode =
+    timestamp === "always" ? "always" : timestamp ? "chrome" : "off";
+  if (tsMode === "always" || (tsMode === "chrome" && useChrome)) {
+    e.setTimestamp(new Date());
+  }
 
   return e;
 }

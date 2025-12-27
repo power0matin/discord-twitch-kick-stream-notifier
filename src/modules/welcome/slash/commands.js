@@ -73,6 +73,23 @@ const welcome = new SlashCommandBuilder()
   )
   .addSubcommand((sc) =>
     sc
+      .setName("set-color")
+      .setDescription("Set/clear welcome embed color.")
+      .addStringOption((o) =>
+        o
+          .setName("color")
+          .setDescription("Hex color: #RRGGBB (example: #57F287)")
+          .setRequired(false)
+      )
+      .addBooleanOption((o) =>
+        o
+          .setName("clear")
+          .setDescription("true to clear custom color and use theme default")
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((sc) =>
+    sc
       .setName("set-dm")
       .setDescription("Enable/disable welcome DM and set template.")
       .addBooleanOption((o) =>
