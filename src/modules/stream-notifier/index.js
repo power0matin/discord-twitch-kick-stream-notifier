@@ -16,6 +16,11 @@ const { handleSetupInteraction } = require("./slash/setup");
 
 const { ensureRoleAdded, ensureRoleRemoved } = require("./streamerRole");
 
+// NEW: modules
+const fivemModule = require("../fivem");
+const ticketsModule = require("../tickets");
+const welcomeModule = require("../welcome");
+
 // UI/Embeds
 const {
   makeEmbed,
@@ -310,6 +315,24 @@ async function main() {
   });
 
   let db = await loadDb();
+
+  // Shared ctx for all modules (single in-memory DB reference)
+  const ctx = {
+    config,
+    client,
+    getDb: () => db,
+    persistDb: async () => saveDb(db),
+    // Useful helpers for consistent UX
+    makeEmbed,
+    ui,
+    fmtDiscordTime,
+    truncate,
+  };
+
+  // Register modules (they attach listeners on the same client)
+  fivemModule.register(ctx);
+  ticketsModule.register(ctx);
+  welcomeModule.register(ctx);
 
   /*
     Settings precedence:
@@ -1143,30 +1166,49 @@ async function main() {
   }
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
-      const handled = await handleSetupInteraction(interaction, {
+      // 1) Stream Notifier setup wizard (highest priority)
+      const setupHandled = await handleSetupInteraction(interaction, {
         onSettingsSaved: async ({ intervalChanged, channelChanged }) => {
           if (channelChanged) invalidateNotifyChannelCache();
           if (intervalChanged) await restartIntervalIfRunning();
         },
       });
 
-      if (!handled) return;
+      if (setupHandled) return;
+
+      // 2) Other module handlers
+      const ctxForHandler = {
+        config,
+        client,
+        getDb: () => db,
+        persistDb: async () => saveDb(db),
+        makeEmbed,
+        ui,
+        fmtDiscordTime,
+        truncate,
+      };
+
+      if (await fivemModule.handleInteraction(interaction, ctxForHandler))
+        return;
+      if (await ticketsModule.handleInteraction(interaction, ctxForHandler))
+        return;
+      if (await welcomeModule.handleInteraction(interaction, ctxForHandler))
+        return;
+
+      // Not handled: ignore
     } catch (err) {
       console.error("[Slash] Interaction error:", err?.message ?? err);
       // Best-effort user feedback
       try {
+        const payload = {
+          ephemeral: true,
+          content:
+            "❌ An unexpected error occurred while handling this interaction.",
+        };
         if (interaction.deferred || interaction.replied) {
-          await interaction.followUp({
-            ephemeral: true,
-            content:
-              "❌ An unexpected error occurred while handling this interaction.",
-          });
+          await interaction.followUp(payload);
         } else {
-          await interaction.reply({
-            ephemeral: true,
-            content:
-              "❌ An unexpected error occurred while handling this interaction.",
-          });
+          await interaction.reply(payload);
         }
       } catch (_) {}
     }

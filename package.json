@@ -1,5 +1,5 @@
 {
-  "name": "nox-rp-stream-notifier",
+  "name": "fivem-discord-manager-bot",
   "version": "1.0.0",
   "description": "Discord bot that monitors Kick & Twitch for GTA V streams with 'Nox RP' in the title and posts @here + stream link in a Discord channel.",
   "main": "src/index.js",
@@ -35,10 +35,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/nox-rp-stream-notifier.git"
+    "url": "git+https://github.com/power0matin/fivem-discord-manager-bot.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/nox-rp-stream-notifier/issues"
+    "url": "https://github.com/power0matin/fivem-discord-manager-bot/issues"
   },
-  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/nox-rp-stream-notifier#readme"
+  "homepage": "https://github.com/power0matin/fivem-discord-manager-bot#readme"
 }

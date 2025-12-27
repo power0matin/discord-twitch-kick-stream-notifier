@@ -2,6 +2,11 @@
 
 const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 
+// Module commands
+const { commands: fivemCommands } = require("../../fivem/slash/commands");
+const { commands: ticketsCommands } = require("../../tickets/slash/commands");
+const { commands: welcomeCommands } = require("../../welcome/slash/commands");
+
 const setup = new SlashCommandBuilder()
   .setName("setup")
   .setDescription("Interactive setup wizard for Stream Notifier bot.")
@@ -21,5 +26,10 @@ const setup = new SlashCommandBuilder()
   );
 
 module.exports = {
-  commands: [setup.toJSON()],
+  commands: [
+    setup.toJSON(),
+    ...fivemCommands,
+    ...ticketsCommands,
+    ...welcomeCommands,
+  ],
 };

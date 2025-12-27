@@ -11,3 +11,6 @@
  * - Register modules (tickets, fivem status, welcome) on that client
  */
 require("./modules/stream-notifier");
+require("./modules/fivem");
+require("./modules/welcome");
+require("./modules/tickets");

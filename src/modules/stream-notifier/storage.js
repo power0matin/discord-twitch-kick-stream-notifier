@@ -20,6 +20,80 @@ const DEFAULT_DB = {
     kickGtaCategoryId: null,
     kickGtaCategoryResolvedAt: 0,
   },
+
+  // ---- NEW MODULES (backward-compatible) ----
+  fivem: {
+    settings: {
+      enabled: false,
+      baseUrl: null, // e.g. http://127.0.0.1:30120
+      statusChannelId: null,
+      statusMessageId: null, // edited in-place to avoid spam
+      checkIntervalSeconds: 60,
+      timeoutMs: 5000,
+      showPlayers: false,
+      maxPlayersShown: 10,
+      connectLabel: "Connect",
+    },
+    state: {
+      consecutiveFailures: 0,
+      nextAllowedAt: 0,
+      lastError: null,
+      lastErrorAt: 0,
+      lastSuccessAt: 0,
+      lastCheckedAt: 0,
+      lastOnline: null,
+    },
+  },
+
+  tickets: {
+    settings: {
+      enabled: false,
+      categoryId: null,
+      staffRoleIds: [],
+      logChannelId: null,
+
+      panelChannelId: null,
+      panelMessageId: null,
+
+      ticketNamePrefix: "ticket",
+      maxOpenPerUser: 1,
+      allowUserClose: true,
+    },
+    state: {
+      openByUserId: {}, // userId -> channelId
+      openByChannelId: {}, // channelId -> userId
+    },
+  },
+
+  welcome: {
+    settings: {
+      enabled: false,
+      channelId: null,
+
+      // Keep for backward compatibility (older configs might still use it)
+      messageTemplate: "Welcome {mention} to **{server}**!",
+
+      // NEW: embed-specific templates (no mention inside embed)
+      embedTitle: "Welcome to the NOX Community!",
+      embedDescriptionTemplate:
+        "Welcome to the NOX Community! We are glad to have you.",
+
+      // NEW: link buttons under embed
+      buttons: {
+        button1Label: "Rules",
+        button1Url: null,
+        button2Label: "Website",
+        button2Url: null,
+      },
+
+      dmEnabled: false,
+      dmTemplate: "Welcome to {server}!",
+      autoRoleId: null,
+    },
+  },
+
+  // ---- END NEW MODULES ----
+
   kick: {
     streamers: [], // { slug, discordId|null }
   },
@@ -70,6 +144,10 @@ async function loadDb() {
       ...DEFAULT_DB,
       ...parsed,
       settings: { ...DEFAULT_DB.settings, ...(parsed.settings ?? {}) },
+      fivem: { ...DEFAULT_DB.fivem, ...(parsed.fivem ?? {}) },
+      tickets: { ...DEFAULT_DB.tickets, ...(parsed.tickets ?? {}) },
+      welcome: { ...DEFAULT_DB.welcome, ...(parsed.welcome ?? {}) },
+
       kick: { ...DEFAULT_DB.kick, ...(parsed.kick ?? {}) },
       twitch: { ...DEFAULT_DB.twitch, ...(parsed.twitch ?? {}) },
       state: { ...DEFAULT_DB.state, ...(parsed.state ?? {}) },
@@ -78,6 +156,39 @@ async function loadDb() {
     // Ensure nested objects exist (in case old db.json is missing these keys)
     db.kick.streamers ||= [];
     db.twitch.streamers ||= [];
+
+    db.fivem ||= structuredClone(DEFAULT_DB.fivem);
+    db.fivem.settings = {
+      ...DEFAULT_DB.fivem.settings,
+      ...(db.fivem.settings ?? {}),
+    };
+    db.fivem.state = { ...DEFAULT_DB.fivem.state, ...(db.fivem.state ?? {}) };
+
+    db.tickets ||= structuredClone(DEFAULT_DB.tickets);
+    db.tickets.settings = {
+      ...DEFAULT_DB.tickets.settings,
+      ...(db.tickets.settings ?? {}),
+    };
+    db.tickets.state = {
+      ...DEFAULT_DB.tickets.state,
+      ...(db.tickets.state ?? {}),
+    };
+    db.tickets.settings.staffRoleIds ||= [];
+    db.tickets.state.openByUserId ||= {};
+    db.tickets.state.openByChannelId ||= {};
+
+    db.welcome ||= structuredClone(DEFAULT_DB.welcome);
+    db.welcome.settings = {
+      ...DEFAULT_DB.welcome.settings,
+      ...(db.welcome.settings ?? {}),
+    };
+
+    // Ensure nested buttons object is merged and always exists
+    db.welcome.settings.buttons = {
+      ...DEFAULT_DB.welcome.settings.buttons,
+      ...(db.welcome.settings.buttons ?? {}),
+    };
+
     db.state.kickLastAnnounced ||= {};
     db.state.twitchLastAnnounced ||= {};
     db.state.kickActiveMessages ||= {};

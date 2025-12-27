@@ -1,144 +1,479 @@
-# Command Reference (Discord Stream Notifier Bot)
+# Command Reference — FiveM Discord Manager Bot
 
-This file is a quick cheat sheet for the bot’s currently supported commands.
+This document is a practical cheat sheet for all **currently supported commands** across modules.
 
-> Note: The command prefix defaults to `.` and can be changed via `PREFIX` in your `.env`.
+> Prefix commands (legacy) use `.` by default and can be changed via `PREFIX` in `.env`.  
+> Slash commands are the recommended way to configure **Welcome / Tickets / FiveM / Setup**.
 
-## Permissions
+## Permissions Model
 
-- If `ALLOWED_ROLE_IDS` is set, only users who have **at least one** of those roles can run admin commands.
-- If `ALLOWED_ROLE_IDS` is empty, the fallback requirement is the **Manage Server** permission (`ManageGuild`).
+Administrative commands are restricted by access control:
+
+- If `ALLOWED_ROLE_IDS` is set: only users with **at least one** of those roles can run admin commands.
+- If `ALLOWED_ROLE_IDS` is empty: fallback requirement is **Manage Server** permission (`ManageGuild`).
+
+Notes:
+
+- Prefix `.help` may be public (depends on implementation), but most config and list management is admin-only.
+- Slash commands use the same access policy.
+
+## Quick Start (Typical Flow)
+
+1. Register slash commands:
+
+```bash
+npm run slash:register
+```
+
+2. In Discord:
+
+- `/setup` (Stream Notifier wizard)
+- `/welcome set-channel`, `/welcome toggle enabled:true`, `/welcome set-buttons ...`
+- `/tickets panel ...` (create ticket panel)
+- `/fivem set-endpoint ...`, `/fivem set-channel ...`, `/fivem toggle enabled:true`
+
+3. Run:
+
+```bash
+npm run start
+```
+
+# Slash Commands (Recommended)
+
+## `/setup` (Stream Notifier)
+
+Interactive setup wizard for Stream Notifier module.
+
+What it configures (best-effort depending on your build):
+
+- Notify channel
+- `@here` toggle
+- Regex filter
+- Scan interval
+- Discovery options (optional)
+
+## `/welcome` — Welcome System
+
+Welcome sends:
+
+- Message content only: `||@mention||`
+- An embed below it (no mention in embed), with user avatar thumbnail
+- Two link buttons (e.g., Rules / Website)
+
+### `/welcome toggle`
+
+Enable/disable welcome behavior.
+
+- `/welcome toggle enabled:true`
+- `/welcome toggle enabled:false`
+
+### `/welcome set-channel`
+
+Set the channel where welcome messages are posted.
+
+- `/welcome set-channel channel:#welcome`
+
+### `/welcome set-title`
+
+Set the embed title.
+
+- `/welcome set-title title:"Welcome to the NOX Community!"`
+
+### `/welcome set-message`
+
+Set the embed description template.
+
+Placeholders:
+
+- `{user}` — user tag/username
+- `{server}` — server name
+
+> Mentions are stripped from embed output by design.
+
+- `/welcome set-message template:"Welcome to {server}! We are glad to have you."`
+
+### `/welcome set-buttons`
+
+Configure two link buttons shown under the welcome embed.
+
+- `/welcome set-buttons label1:"Rules" url1:"https://example.com/rules" label2:"Website" url2:"https://example.com"`
+
+### `/welcome set-role`
+
+Auto-role behavior for new members.
+
+- Set role:
+
+  - `/welcome set-role role:@Member`
+
+- Clear:
+
+  - `/welcome set-role clear:true`
+
+### `/welcome set-dm`
+
+Enable/disable DM and optionally set a DM template.
+
+- Enable DM:
+
+  - `/welcome set-dm enabled:true template:"Welcome to {server}!"`
+
+- Disable DM:
+
+  - `/welcome set-dm enabled:false`
+
+### `/welcome test`
+
+Sends a test welcome (best-effort).
+In most builds, test can **force send** even if welcome is disabled (to validate formatting).
+
+- `/welcome test`
+
+### `/welcome show`
+
+Show current welcome settings.
+
+- `/welcome show`
+
+## `/tickets` — Ticket System
+
+Ticket module provides:
+
+- A panel message with a “Create Ticket” button
+- Private ticket channels under a category
+- Staff role access
+- Close workflow (button + confirmation)
+- Optional logging
+
+### `/tickets toggle`
+
+Enable/disable ticket system.
+
+- `/tickets toggle enabled:true`
+- `/tickets toggle enabled:false`
+
+### `/tickets set-category`
+
+Set the category where ticket channels are created.
+
+- `/tickets set-category category:"Tickets"`
+
+### `/tickets staff-add` / `/tickets staff-remove`
+
+Grant staff role access to all ticket channels.
+
+- `/tickets staff-add role:@Staff`
+- `/tickets staff-remove role:@Staff`
+
+### `/tickets set-log-channel`
+
+Set a log channel for ticket events (open/close).
+
+- `/tickets set-log-channel channel:#logs`
+
+### `/tickets panel`
+
+Create or update the ticket panel message.
+
+- `/tickets panel channel:#support title:"Support" description:"Open a ticket and our staff will help you."`
+
+### `/tickets close`
+
+Close a ticket (intended to be used inside a ticket channel).
+
+- `/tickets close`
+
+### `/tickets show`
+
+Show current ticket settings.
+
+- `/tickets show`
+
+## `/fivem` — FiveM Server Status
+
+FiveM module can publish or edit a live status message.
+
+### `/fivem set-endpoint`
+
+Set your server base URL.
+
+Examples:
+
+- `/fivem set-endpoint url:"http://127.0.0.1:30120"`
+- `/fivem set-endpoint url:"http://YOUR_PUBLIC_IP:30120"`
+
+> The bot typically queries endpoints like `/dynamic.json`, `/info.json`, and optionally `/players.json`.
+
+### `/fivem set-channel`
+
+Set the channel where the status message will be posted/updated.
+
+- `/fivem set-channel channel:#server-status`
+
+### `/fivem set-interval`
+
+Set polling interval in seconds.
+
+- `/fivem set-interval seconds:60`
+
+### `/fivem toggle`
+
+Enable/disable the status updater.
+
+- `/fivem toggle enabled:true`
+- `/fivem toggle enabled:false`
+
+### `/fivem status`
+
+Fetch status once and show the result (debug / manual check).
+
+- `/fivem status`
+
+### `/fivem show`
+
+Show current FiveM settings.
+
+- `/fivem show`
+
+# Prefix Commands (Legacy Stream Notifier)
+
+> These commands exist for the legacy Stream Notifier module and may be migrated to slash commands over time.
 
 ## Help
 
-### `.<help>`
+### `.help`
 
 Shows a short list of commands in Discord.
 
-**Example**
+Example:
 
 - `.help`
 
 ## Manual Scan
 
-### `.<tick>`
+### `.tick`
 
 Runs an immediate scan (Kick + Twitch).
 
-**Example**
+Example:
 
 - `.tick`
 
-## Kick Commands
+## Health / Debug
 
-> All Kick commands are admin commands (permission required).
+### `.health`
 
-### 1) List
+Shows last tick time, failure state, backoff windows, and API health.
 
-#### `.<k list>`
+Example:
 
-Shows the configured Kick streamers.
+- `.health`
 
-**Example**
+### `.config`
+
+Shows current runtime settings (sanitized / no secrets).
+
+Example:
+
+- `.config`
+
+### `.export [all|kick|twitch]`
+
+Exports settings + lists (no secrets).
+
+Examples:
+
+- `.export`
+- `.export kick`
+- `.export twitch`
+
+## Settings (Stream Notifier)
+
+### `.set channel <#channel|channelId|this>`
+
+Set the notify channel.
+
+Examples:
+
+- `.set channel #alerts`
+- `.set channel 978674345088004126`
+- `.set channel this`
+
+### `.set mentionhere <on|off>`
+
+Toggle `@here` in alerts.
+
+Examples:
+
+- `.set mentionhere on`
+- `.set mentionhere off`
+
+### `.set regex <pattern>`
+
+Set the title filter regex.
+
+Example:
+
+- `.set regex nox\\s*[-_]*\\s*rp`
+
+### `.set interval <seconds>`
+
+Set polling interval (commonly 10..3600 depending on your build limits).
+
+Example:
+
+- `.set interval 60`
+
+### `.set discovery <on|off>`
+
+Enable discovery scanning (more API usage, less deterministic than curated lists).
+
+Examples:
+
+- `.set discovery on`
+- `.set discovery off`
+
+### `.set discoveryTwitchPages <1..50>`
+
+Pages scanned on Twitch in discovery mode (each page up to 100 results).
+
+Example:
+
+- `.set discoveryTwitchPages 5`
+
+### `.set discoveryKickLimit <1..100>`
+
+Kick discovery scanning limit.
+
+Example:
+
+- `.set discoveryKickLimit 100`
+
+### `.set twitchGameId <game_id>`
+
+Set Twitch game_id used for filtering.
+
+Example:
+
+- `.set twitchGameId 32982`
+
+### `.set kickCategoryName <name>`
+
+Set Kick category name used for filtering.
+
+Example:
+
+- `.set kickCategoryName Grand Theft Auto V`
+
+### `.refresh kickCategory`
+
+Force re-resolve Kick category id.
+
+Example:
+
+- `.refresh kickCategory`
+
+## Kick Commands (Admin)
+
+### `.k list`
+
+List configured Kick streamers.
 
 - `.k list`
 
-### 2) Add
+### `.k add <kickSlug> [@discordUser|discordUserId]`
 
-#### `.<k add <kickSlug> [@discordUser|discordUserId]>`
+Add a Kick streamer by slug.
 
-Adds a Kick streamer by `slug`. If you provide `@user` or a numeric `userId`, the bot will mention that user in the LIVE alert message.
-
-**Shortcut**
+Shortcuts:
 
 - `.k <kickSlug> [@discordUser|discordUserId]`
 
-**Examples**
+Examples:
 
 - `.k add amirjavankabir`
 - `.k add amirjavankabir @Matin`
 - `.k amirjavankabir 123456789012345678`
 
-### 3) Remove
+### `.k remove <kickSlug>`
 
-#### `.<k remove <kickSlug>>`
-
-Removes the streamer from the list and (if there is an active LIVE message) also tries to delete it.
-
-**Example**
+Remove the streamer from the list and delete the active alert message (if any).
 
 - `.k remove amirjavankabir`
 
-### 4) Status (Debug)
+### `.k status <kickSlug>`
 
-#### `.<k status <kickSlug>>`
-
-Debug command: shows whether the streamer is live and whether it matches the current filters (Category and Regex).
-
-**Example**
+Debug streamer matching: live state + filter match.
 
 - `.k status amirjavankabir`
 
-## Twitch Commands
+### Optional utilities (if present in your build)
 
-> All Twitch commands are admin commands (permission required).
+- `.k addmany <slug1> <slug2> ...`
+- `.k setmention <kickSlug> <@user|id|none>`
+- `.k clear --yes`
 
-### 1) List
+## Twitch Commands (Admin)
 
-#### `.<t list>`
+### `.t list`
 
-Shows the configured Twitch streamers.
-
-**Example**
+List configured Twitch streamers.
 
 - `.t list`
 
-### 2) Add
+### `.t add <twitchLogin> [@discordUser|discordUserId]`
 
-#### `.<t add <twitchLogin> [@discordUser|discordUserId]>`
+Add a Twitch streamer by login.
 
-Adds a Twitch streamer by `login`. If you provide `@user` or a numeric `userId`, the bot will mention that user in the LIVE alert message.
-
-**Shortcut**
+Shortcut:
 
 - `.t <twitchLogin> [@discordUser|discordUserId]`
 
-**Examples**
+Examples:
 
 - `.t add shroud`
 - `.t add shroud @Matin`
 - `.t shroud 123456789012345678`
 
-### 3) Remove
+### `.t remove <twitchLogin>`
 
-#### `.<t remove <twitchLogin>>`
-
-Removes the streamer from the list and (if there is an active LIVE message) also tries to delete it.
-
-**Example**
+Remove streamer and delete active alert message (if any).
 
 - `.t remove shroud`
 
-### 4) Status (Debug)
+### `.t status <twitchLogin>`
 
-#### `.<t status <twitchLogin>>`
-
-Debug command: shows whether the streamer is live and whether it matches the current filters (GameId and Regex).
-
-**Example**
+Debug streamer matching: live state + filter match.
 
 - `.t status shroud`
+
+### Optional utilities (if present in your build)
+
+- `.t addmany <login1> <login2> ...`
+- `.t setmention <twitchLogin> <@user|id|none>`
+- `.t clear --yes`
 
 ## Practical Notes
 
 ### Mention formats supported
 
-To map a streamer to a Discord user, the bot supports:
+When mapping a streamer to a Discord user, supported formats typically include:
 
-1. A real Discord mention (autocomplete)
-2. Pasting `<@123>` or `<@!123>`
-3. A numeric user ID (`123...`)
+1. Real mention via autocomplete (`@User`)
+2. Mention markup: `<@123>` or `<@!123>`
+3. Raw numeric user ID: `123456789012345678`
+
+Tip:
+If you typed `@username` but didn’t select from autocomplete, it might not resolve as a valid mention. Raw ID always works.
+
+### Module separation
+
+Some commands are module-specific:
+
+- `.` prefix commands mainly target **Stream Notifier**
+- Slash commands (`/welcome`, `/tickets`, `/fivem`) target their modules
 
 ### Limitations
 
-- In the current version, settings like `MENTION_HERE`, `KEYWORD_REGEX`, and `CHECK_INTERVAL_SECONDS` are controlled via `.env`. There are no Discord commands to change them at runtime.
+- Multi-server configuration (per-guild separate data) may not be included yet.
+- Some options may be available only via slash commands or only via prefix commands depending on your current build.
