@@ -18,7 +18,7 @@ A **modular Discord bot** for **FiveM communities**.
 It currently ships with:
 
 - **Stream Notifier** (Twitch + Kick alerts with filters)
-- **FiveM Server Status** (auto-updating status message)
+- **FiveM Server Status** (auto-updating status card with players, restart ETA, optional server uptime, and buttons)
 - **Tickets** (panel + private ticket channels + close workflow)
 - **Welcome** (clean welcome message with buttons + user avatar thumbnail)
 
@@ -57,18 +57,35 @@ Key behaviors:
 
 ### 2) FiveM Status
 
-Auto-posts (or edits) a single message in a configured channel showing:
+Auto-posts (or edits) a single **status card** message in a configured channel.
 
-- Online/offline
-- Players count
-- Optional players list (safe/truncated)
-- Link button (Connect)
+What it shows:
 
-It uses FiveM endpoints like:
+- Online/offline (with blocked endpoint detection: `"Nope."`)
+- Players count (+ optional players list, safe/truncated)
+- **F8 connect command** (configurable)
+- **Next restart ETA** (based on daily restart times you set)
+- **Uptime (STRICT)**: shown **only if the FiveM server explicitly publishes uptime**
+  - If the server does not expose uptime via `/dynamic.json` or `/info.json` (including `vars`), the embed shows `--`
+  - This prevents showing bot-observed uptime (which is often misleading)
 
-- `/dynamic.json`
+Buttons / UX:
+
+- **Website button** (http/https link button)
+- **Connect button**
+  - If `connectUrl` is **http/https** → Discord link button
+  - If `connectUrl` is **fivem://...** → custom button that replies ephemerally with connect instructions + the link
+
+Data sources (FiveM endpoints):
+
+- `/dynamic.json` (primary signal in most setups)
 - `/info.json`
 - `/players.json`
+
+Reliability behaviors:
+
+- Edits a single message in-place (no channel spam)
+- Failure backoff to avoid hammering on transient outages
 
 ### 3) Tickets
 
@@ -149,12 +166,30 @@ Interactive wizard for Stream Notifier module:
 
 FiveM server status & auto updater:
 
+Core:
+
 - `/fivem set-endpoint url:http://127.0.0.1:30120`
 - `/fivem set-channel channel:#status`
-- `/fivem set-interval seconds:60`
+- `/fivem set-interval seconds:300`
 - `/fivem toggle enabled:true`
 - `/fivem status`
 - `/fivem show`
+
+UI / Card:
+
+- `/fivem set-title title:"Nox RP v3.1"`
+- `/fivem set-description text:"Short tagline here..."`
+- `/fivem set-banner url:"https://..."` or `/fivem set-banner clear:true`
+
+Buttons / Connect UX:
+
+- `/fivem set-website url:"https://example.com" label:"Website"`
+- `/fivem set-connect url:"fivem://connect/your.host"` or `url:"https://..."` + `label:"Connect"`
+- `/fivem set-connect-command command:"connect your.host"`
+
+Restart schedule:
+
+- `/fivem set-restart-times times:"05:00,17:00"` or `/fivem set-restart-times clear:true`
 
 ### `/tickets`
 
@@ -217,7 +252,7 @@ After first run, **`data.json` is the source of truth** so you can configure via
 `data.json` stores:
 
 - Stream Notifier settings + streamer lists
-- FiveM status settings + health/backoff state
+- FiveM status card settings (buttons, restart schedule, embed theme) + module backoff/health state
 - Tickets settings + open ticket mappings
 - Welcome settings (templates/buttons/roles)
 - Message IDs for edit-in-place behavior (FiveM status / Stream alerts)
@@ -306,6 +341,28 @@ Ensure bot has:
 - Send Messages
   Also ensure ticket category is a valid category.
 
+### FiveM uptime shows `--`
+
+This is expected in **STRICT uptime mode**.
+
+The bot only displays uptime if your FiveM server explicitly publishes it via `/dynamic.json` or `/info.json` (including `vars`).
+If your server does not expose an uptime variable/convar, the embed shows `--` to avoid misleading “bot uptime”.
+
+Tip:
+
+- Expose a convar/variable like `uptimeSeconds` (or any key containing `uptime`) on the server side so it appears under `vars`.
+- Then the bot can parse and render it.
+
+### FiveM endpoints are blocked (shows Offline / “Nope.”)
+
+If the bot reports that endpoints are blocked, your server (or a proxy/firewall) is likely returning `"Nope."` for:
+
+- `/dynamic.json`
+- `/info.json`
+- `/players.json`
+
+Ensure the bot host can reach your FiveM server port (default `30120`) and that these endpoints are not filtered.
+
 ## Roadmap
 
 - [ ] Convert to a true top-level modular core (single client in `src/index.js`, modules register on it)
@@ -337,7 +394,7 @@ MIT — see [LICENSE](LICENSE)
 
 **Matin Shahabadi (متین شاه‌آبادی / متین شاه آبادی)**
 
-* Website: [matinshahabadi.ir](https://matinshahabadi.ir)
-* Email: [me@matinshahabadi.ir](mailto:me@matinshahabadi.ir)
-* GitHub: [power0matin](https://github.com/power0matin)
-* LinkedIn: [matin-shahabadi](https://www.linkedin.com/in/matin-shahabadi)
+- Website: [matinshahabadi.ir](https://matinshahabadi.ir)
+- Email: [me@matinshahabadi.ir](mailto:me@matinshahabadi.ir)
+- GitHub: [power0matin](https://github.com/power0matin)
+- LinkedIn: [matin-shahabadi](https://www.linkedin.com/in/matin-shahabadi)
