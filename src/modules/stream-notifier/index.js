@@ -6,6 +6,9 @@ const {
   PermissionsBitField,
   Events,
   ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const { config } = require("./config");
@@ -1229,118 +1232,249 @@ async function main() {
     const cmdLower = normalizeName(cmd);
 
     if (cmdLower === "help") {
-      const e = makeEmbed(message, {
+      const p = config.prefix;
+      const totalPages = 3;
+
+      // Page 1/3 — Overview
+      const page1 = makeEmbed(message, {
         tone: "INFO",
-        title: "FiveM Discord Manager Bot • Commands",
+        title: "FiveM Discord Manager Bot • Help",
         description: [
-          `**Prefix:** \`${config.prefix}\``,
-          `Use \`${config.prefix}help\` anytime.`,
-          `Tip: Use **/setup** (Stream Notifier) and module commands: **/welcome**, **/tickets**, **/fivem**.`,
+          `**Prefix:** \`${p}\``,
+          `Use \`${p}help\` anytime.`,
+          "",
+          "**Recommended (modules):**",
+          "Use slash commands for configuration and safer UX:",
+          "• **/setup** (Stream Notifier)",
+          "• **/welcome**",
+          "• **/tickets**",
+          "• **/fivem**",
         ].join("\n"),
         fields: [
           {
-            name: "General",
+            name: "General (Prefix)",
             value: [
-              `\`${prefix}config\`  (show current settings)`,
-              `\`${prefix}health\`  (tick + API/backoff status)`,
-              `\`${prefix}export [all|kick|twitch]\`  (no secrets)`,
-              `\`${prefix}tick\`  (manual scan)`,
+              `• **${p}config** — show current settings`,
+              `• **${p}health** — tick + API/backoff status`,
+              `• **${p}export** \`[all|kick|twitch]\` — export config (no secrets)`,
+              `• **${p}tick** — manual scan`,
             ].join("\n"),
           },
-
           {
-            name: "Stream Notifier • Settings (admin)",
+            name: "Notes",
             value: [
-              `\`${prefix}set channel <#channel|channelId|this>\``,
-              `\`${prefix}set mentionhere <on|off>\``,
-              `\`${prefix}set regex <pattern>\``,
-              `\`${prefix}set interval <seconds>\`  (10..3600)`,
-              `\`${prefix}set discovery <on|off>\``,
-              `\`${prefix}set discoveryTwitchPages <1..50>\``,
-              `\`${prefix}set discoveryKickLimit <1..100>\``,
-              `\`${prefix}set twitchGameId <game_id>\``,
-              `\`${prefix}set kickCategoryName <name>\``,
-              `\`${prefix}refresh kickCategory\``,
-            ].join("\n"),
-          },
-
-          {
-            name: "Stream Notifier • Kick (admin)",
-            value: [
-              `\`${prefix}k list\``,
-              `\`${prefix}k add <kickSlug> [@discordUser|discordUserId]\``,
-              `\`${prefix}k <kickSlug> [@discordUser|discordUserId]\`  (shortcut)`,
-              `\`${prefix}k addmany <slug1> <slug2> ...\``,
-              `\`${prefix}k setmention <kickSlug> <@user|id|none>\``,
-              `\`${prefix}k remove <kickSlug>\``,
-              `\`${prefix}k clear --yes\``,
-              `\`${prefix}k status <kickSlug>\``,
-            ].join("\n"),
-            inline: true,
-          },
-
-          {
-            name: "Stream Notifier • Twitch (admin)",
-            value: [
-              `\`${prefix}t list\``,
-              `\`${prefix}t add <twitchLogin> [@discordUser|discordUserId]\``,
-              `\`${prefix}t <twitchLogin> [@discordUser|discordUserId]\`  (shortcut)`,
-              `\`${prefix}t addmany <login1> <login2> ...\``,
-              `\`${prefix}t setmention <twitchLogin> <@user|id|none>\``,
-              `\`${prefix}t remove <twitchLogin>\``,
-              `\`${prefix}t clear --yes\``,
-              `\`${prefix}t status <twitchLogin>\``,
-            ].join("\n"),
-            inline: true,
-          },
-
-          {
-            name: "Welcome • Slash (admin)",
-            value: [
-              "`/welcome toggle enabled:true|false`",
-              "`/welcome set-channel channel:#channel`",
-              '`/welcome set-title title:"..."`',
-              '`/welcome set-message template:"..."`  (use {user}, {server})',
-              '`/welcome set-buttons label1:"..." url1:"..." label2:"..." url2:"..."`',
-              '`/welcome set-color color:"#RRGGBB" clear:true|false`',
-              '`/welcome set-dm enabled:true|false template:"..."`',
-              "`/welcome set-role role:@Role clear:true|false`",
-              "`/welcome test`",
-              "`/welcome show`",
-            ].join("\n"),
-          },
-
-          {
-            name: "Tickets • Slash (admin)",
-            value: [
-              "`/tickets toggle enabled:true|false`",
-              "`/tickets set-panel channel:#channel`",
-              "`/tickets post-panel`",
-              "`/tickets set-category category:#category`",
-              "`/tickets set-support-role role:@Role clear:true|false`",
-              "`/tickets set-log channel:#channel clear:true|false`",
-              '`/tickets set-name template:"ticket-{user}"`',
-              "`/tickets close`  (inside ticket channel)`",
-              "`/tickets show`",
-            ].join("\n"),
-          },
-
-          {
-            name: "FiveM Status • Slash (admin)",
-            value: [
-              "`/fivem toggle enabled:true|false`",
-              "`/fivem set-channel channel:#channel`",
-              '`/fivem set-endpoint url:"http(s)://..."`',
-              "`/fivem set-interval seconds:30..3600`",
-              "`/fivem test`",
-              "`/fivem show`",
+              "• Prefix commands are primarily for Stream Notifier legacy ops.",
+              "• Slash commands are preferred for Tickets/Welcome/FiveM modules.",
             ].join("\n"),
           },
         ],
-        extraFooter: "Help",
+        extraFooter: `Help • 1/${totalPages}`,
       });
 
-      await replyEmbed(message, e);
+      // Page 2/3 — Stream Notifier (Prefix Admin)
+      const page2 = makeEmbed(message, {
+        tone: "INFO",
+        title: "Stream Notifier • Prefix Commands",
+        description:
+          "Admin-only operations for Stream Notifier configuration & streamer lists.",
+        fields: [
+          {
+            name: "Settings (Admin)",
+            value: [
+              `• **${p}set channel** \`<#channel|channelId|this>\``,
+              `• **${p}set mentionhere** \`<on|off>\``,
+              `• **${p}set regex** \`<pattern>\``,
+              `• **${p}set interval** \`<seconds>\`  (10..3600)`,
+              `• **${p}set discovery** \`<on|off>\``,
+              `• **${p}set discoveryTwitchPages** \`<1..50>\``,
+              `• **${p}set discoveryKickLimit** \`<1..100>\``,
+              `• **${p}set twitchGameId** \`<game_id>\``,
+              `• **${p}set kickCategoryName** \`<name>\``,
+              `• **${p}refresh kickCategory**`,
+            ].join("\n"),
+          },
+          {
+            name: "Kick (Admin)",
+            value: [
+              `• **${p}k list**`,
+              `• **${p}k add** \`<kickSlug>\` \`[@discordUser|discordUserId]\``,
+              `• **${p}k <kickSlug>** \`[@discordUser|discordUserId]\` (shortcut)`,
+              `• **${p}k addmany** \`<slug1> <slug2> ...\``,
+              `• **${p}k setmention** \`<kickSlug>\` \`<@user|id|none>\``,
+              `• **${p}k remove** \`<kickSlug>\``,
+              `• **${p}k clear** \`--yes\``,
+              `• **${p}k status** \`<kickSlug>\``,
+            ].join("\n"),
+            inline: true,
+          },
+          {
+            name: "Twitch (Admin)",
+            value: [
+              `• **${p}t list**`,
+              `• **${p}t add** \`<twitchLogin>\` \`[@discordUser|discordUserId]\``,
+              `• **${p}t <twitchLogin>** \`[@discordUser|discordUserId]\` (shortcut)`,
+              `• **${p}t addmany** \`<login1> <login2> ...\``,
+              `• **${p}t setmention** \`<twitchLogin>\` \`<@user|id|none>\``,
+              `• **${p}t remove** \`<twitchLogin>\``,
+              `• **${p}t clear** \`--yes\``,
+              `• **${p}t status** \`<twitchLogin>\``,
+            ].join("\n"),
+            inline: true,
+          },
+        ],
+        extraFooter: `Help • 2/${totalPages}`,
+      });
+
+      // Page 3/3 — Modules (Slash)
+      const page3 = makeEmbed(message, {
+        tone: "INFO",
+        title: "Modules • Slash Commands",
+        description: "Use these for clean UX and safe configuration (Admin).",
+        fields: [
+          {
+            name: "Welcome (Admin)",
+            value: [
+              "• **/welcome toggle** `enabled:true|false`",
+              "• **/welcome set-channel** `channel:#channel`",
+              '• **/welcome set-title** `title:"..."`',
+              '• **/welcome set-message** `template:"..."` (use `{user}`, `{server}`)',
+              '• **/welcome set-buttons** `label1:"..." url1:"..." label2:"..." url2:"..."`',
+              '• **/welcome set-color** `color:"#RRGGBB"` `clear:true|false`',
+              '• **/welcome set-dm** `enabled:true|false` `template:"..."`',
+              "• **/welcome set-role** `role:@Role` `clear:true|false`",
+              "• **/welcome test**",
+              "• **/welcome show**",
+            ].join("\n"),
+          },
+          {
+            name: "Tickets (Admin)",
+            value: [
+              "• **/tickets toggle** `enabled:true|false`",
+              "• **/tickets set-category** `category:<category>`",
+              "• **/tickets staff-add** `role:<role>`",
+              "• **/tickets set-log-channel** `channel:<channel>`",
+              "• **/tickets panel** `channel:<channel> [title] [description]`",
+              "• **/tickets close** (inside ticket channel)",
+              "• **/tickets show**",
+            ].join("\n"),
+          },
+          {
+            name: "FiveM Status (Admin)",
+            value: [
+              "• **/fivem toggle** `enabled:true|false`",
+              "• **/fivem set-endpoint** `url:http://127.0.0.1:30120`",
+              "• **/fivem set-channel** `channel:#status`",
+              "• **/fivem set-interval** `seconds:60..3600` (recommended: 300)",
+              "• **/fivem status**",
+              "• **/fivem show**",
+              "",
+              '• **/fivem set-title** `title:"..."`',
+              '• **/fivem set-description** `text:"..."`',
+              '• **/fivem set-banner** `url:"https://..."` `clear:true|false`',
+              '• **/fivem set-website** `url:"https://..."` `label:"Website"`',
+              '• **/fivem set-connect** `url:"http(s)://..."|"fivem://connect/..."` `label:"Connect"`',
+              '• **/fivem set-connect-command** `command:"connect sv.example.com"`',
+              '• **/fivem set-restart-times** `times:"04:00,16:00"` `clear:true|false`',
+            ].join("\n"),
+          },
+        ],
+        extraFooter: `Help • 3/${totalPages}`,
+      });
+
+      const pages = [page1, page2, page3];
+
+      // Build a single-row paginator (max 5 buttons)
+      const buildRow = (idx) => {
+        const atFirst = idx <= 0;
+        const atLast = idx >= pages.length - 1;
+
+        return new ActionRowBuilder().addComponents(
+          // Jump buttons
+          new ButtonBuilder()
+            .setCustomId("help:home")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("Home")
+            .setDisabled(atFirst),
+
+          new ButtonBuilder()
+            .setCustomId("help:stream")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("Stream")
+            .setDisabled(idx === 1),
+
+          new ButtonBuilder()
+            .setCustomId("help:modules")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("Modules")
+            .setDisabled(idx === 2),
+
+          // Prev/Next
+          new ButtonBuilder()
+            .setCustomId("help:prev")
+            .setStyle(ButtonStyle.Primary)
+            .setLabel("Prev")
+            .setDisabled(atFirst),
+
+          new ButtonBuilder()
+            .setCustomId("help:next")
+            .setStyle(ButtonStyle.Primary)
+            .setLabel("Next")
+            .setDisabled(atLast)
+        );
+      };
+
+      // Send ONE message, then edit it via buttons
+      let idx = 0;
+      const sent = await message.channel.send({
+        embeds: [pages[idx]],
+        components: [buildRow(idx)],
+      });
+
+      const collector = sent.createMessageComponentCollector({
+        time: 2 * 60_000, // 2 minutes
+      });
+
+      collector.on("collect", async (i) => {
+        // Only allow the invoker to control pagination
+        if (i.user.id !== message.author.id) {
+          try {
+            await i.reply({
+              ephemeral: true,
+              content: "Only the command author can use these buttons.",
+            });
+          } catch (_) {}
+          return;
+        }
+
+        const id = String(i.customId || "");
+
+        if (id === "help:home") idx = 0;
+        else if (id === "help:stream") idx = 1;
+        else if (id === "help:modules") idx = 2;
+        else if (id === "help:prev") idx = Math.max(0, idx - 1);
+        else if (id === "help:next") idx = Math.min(pages.length - 1, idx + 1);
+
+        try {
+          await i.update({
+            embeds: [pages[idx]],
+            components: [buildRow(idx)],
+          });
+        } catch (_) {}
+      });
+
+      collector.on("end", async () => {
+        // Disable buttons after timeout
+        try {
+          const row = buildRow(idx);
+          for (const c of row.components) c.setDisabled(true);
+
+          await sent.edit({
+            embeds: [pages[idx]],
+            components: [row],
+          });
+        } catch (_) {}
+      });
+
       return;
     }
 
