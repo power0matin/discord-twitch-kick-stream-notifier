@@ -417,6 +417,38 @@ async function main() {
     return map;
   };
 
+  // Prefer Kick over Twitch when the same person is live on both (and Kick matches notify rules).
+  // In-memory only; rebuilt every tick.
+  const kickLiveSnapshot = {
+    discordIds: new Set(),
+    slugs: new Set(),
+  };
+
+  function resetKickLiveSnapshot() {
+    kickLiveSnapshot.discordIds.clear();
+    kickLiveSnapshot.slugs.clear();
+  }
+
+  function markKickLive(slug, discordId) {
+    const s = normalizeName(slug);
+    if (s) kickLiveSnapshot.slugs.add(s);
+
+    const d = discordId ? String(discordId) : "";
+    if (d) kickLiveSnapshot.discordIds.add(d);
+  }
+
+  function isKickPreferredForTwitch(twitchLogin, discordId) {
+    // Primary identity: Discord ID (most reliable)
+    const d = discordId ? String(discordId) : "";
+    if (d && kickLiveSnapshot.discordIds.has(d)) return true;
+
+    // Fallback identity: same handle/slug (best-effort; may be imperfect)
+    const l = normalizeName(twitchLogin);
+    if (l && kickLiveSnapshot.slugs.has(l)) return true;
+
+    return false;
+  }
+
   /* ------------------------- health / backoff ------------------------- */
 
   function platformKeyToHealthKey(platformKey) {
@@ -621,7 +653,8 @@ async function main() {
   async function ensureOfflineMessageDeleted(
     platformKey,
     streamerKey,
-    discordId
+    discordId,
+    opts = {}
   ) {
     const stateKey =
       platformKey === "kick" ? "kickActiveMessages" : "twitchActiveMessages";
@@ -632,7 +665,13 @@ async function main() {
     const deleted = await deleteNotifyMessage(client, db, prev.messageId);
 
     // Only remove role AFTER the notify message is deleted (or already missing)
-    if (deleted && config.streamerLiveRoleId && discordId) {
+    // BUT allow callers to skip role removal (e.g., streamer is still live on the other platform).
+    if (
+      deleted &&
+      !opts.skipRoleRemoval &&
+      config.streamerLiveRoleId &&
+      discordId
+    ) {
       const channel = await fetchNotifyChannel(client, db);
       const guild = channel?.guild ?? null;
       if (guild) {
@@ -720,6 +759,9 @@ async function main() {
         const streamerMeta = metaMap.get(slug);
         const discordId = streamerMeta?.discordId ?? null;
 
+        // Kick qualifies -> mark as preferred identity for this tick
+        markKickLive(slug, discordId);
+
         const created = await ensureLiveMessage("kick", slug, sessionKey, {
           platform: "Kick",
           username: slug,
@@ -800,6 +842,9 @@ async function main() {
       const streamerMeta = metaMap.get(slug);
       const discordId = streamerMeta?.discordId ?? null;
 
+      // Kick qualifies -> mark as preferred identity for this tick
+      markKickLive(slug, discordId);
+
       const created = await ensureLiveMessage("kick", slug, sessionKey, {
         platform: "Kick",
         username: slug,
@@ -862,7 +907,8 @@ async function main() {
           const deleted = await ensureOfflineMessageDeleted(
             "twitch",
             login,
-            discordId
+            discordId,
+            { skipRoleRemoval: isKickPreferredForTwitch(login, discordId) }
           );
           changed = changed || deleted;
           continue;
@@ -880,7 +926,8 @@ async function main() {
           const deleted = await ensureOfflineMessageDeleted(
             "twitch",
             login,
-            discordId
+            discordId,
+            { skipRoleRemoval: isKickPreferredForTwitch(login, discordId) }
           );
           changed = changed || deleted;
           continue;
@@ -888,6 +935,18 @@ async function main() {
 
         const streamerMeta = metaMap.get(login);
         const discordId = streamerMeta?.discordId ?? null;
+
+        // If the same person is live on Kick (and Kick qualifies), do NOT send Twitch notify.
+        if (isKickPreferredForTwitch(login, discordId)) {
+          const deleted = await ensureOfflineMessageDeleted(
+            "twitch",
+            login,
+            discordId,
+            { skipRoleRemoval: true }
+          );
+          changed = changed || deleted;
+          continue;
+        }
 
         const created = await ensureLiveMessage("twitch", login, streamId, {
           platform: "Twitch",
@@ -954,6 +1013,18 @@ async function main() {
         const streamerMeta = metaMap.get(login);
         const discordId = streamerMeta?.discordId ?? null;
 
+        // If Kick is preferred for this identity, suppress Twitch notify (and cleanup any old Twitch message).
+        if (isKickPreferredForTwitch(login, discordId)) {
+          const deleted = await ensureOfflineMessageDeleted(
+            "twitch",
+            login,
+            discordId,
+            { skipRoleRemoval: true }
+          );
+          changed = changed || deleted;
+          continue;
+        }
+
         const created = await ensureLiveMessage("twitch", login, streamId, {
           platform: "Twitch",
           username: login,
@@ -999,10 +1070,11 @@ async function main() {
         return b || d;
       };
 
-      const [kickChanged, twitchChanged] = await Promise.all([
-        kickCycle(),
-        twitchCycle(),
-      ]);
+      // Kick must run first to build the "Kick live" snapshot used to suppress Twitch duplicates.
+      resetKickLiveSnapshot();
+
+      const kickChanged = await kickCycle();
+      const twitchChanged = await twitchCycle();
 
       changed = kickChanged || twitchChanged;
     } catch (err) {
